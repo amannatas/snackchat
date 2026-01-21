@@ -12,6 +12,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Snakchatai">
         <activity
+            android:name=".chat_screen"
+            android:exported="false" />
+        <activity
+            android:name=".fake_chat"
+            android:exported="false" />
+        <activity
+            android:name=".login_screen"
+            android:exported="false" />
+        <activity
             android:name=".splash_screen"
             android:exported="false" />
         <activity
