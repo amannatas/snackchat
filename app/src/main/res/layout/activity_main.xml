@@ -8,6 +8,9 @@
     android:layout_height="match_parent"
     tools:openDrawer="start"
     tools:context=".MainActivity">
+    <include layout="@layout/app_bar_main"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
 
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/navview"

@@ -6,14 +6,6 @@
         <entry key="Firebase Crashlytics">
           <value>
             <InsightsFilterSettings>
-              <option name="connection">
-                <ConnectionSetting>
-                  <option name="appId" value="com.example.snakchatai" />
-                  <option name="mobileSdkAppId" value="1:856029526625:android:153d761690a26f5ce60820" />
-                  <option name="projectId" value="snakchat-ai" />
-                  <option name="projectNumber" value="856029526625" />
-                </ConnectionSetting>
-              </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
               <option name="timeIntervalDays" value="THIRTY_DAYS" />
               <option name="visibilityType" value="ALL" />

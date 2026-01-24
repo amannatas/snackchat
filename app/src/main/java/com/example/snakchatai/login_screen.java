@@ -27,7 +27,7 @@ Button login;
         login = findViewById(R.id.loginButton);
 
 
-        Intent imain = new Intent(login_screen.this, fake_chat.class);
+        Intent imain = new Intent(login_screen.this, MainActivity.class);
         login.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

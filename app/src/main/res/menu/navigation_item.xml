@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:id="@+id/optNots"
-        android:title="Notes"/>
+        android:id="@+id/account"
+        android:title="account"
+        
+        android:icon="@drawable/acc"/>
+    <item
+        android:id="@+id/setting"
+        android:title="setting"
+        android:icon="@drawable/set"/>
     <item
         android:id="@+id/optNots"
-        android:title="Notes"/>
+        android:title="Notes"
+        android:icon="@drawable/book"/>
+
     <item
-        android:id="@+id/optNots"
-        android:title="Notes"/>
-    <item
-        android:id="@+id/optNots"
-        android:title="Notes"/>
-    <item
-        android:id="@+id/optNots"
-        android:title="Notes"/>
+        android:id="@+id/logout"
+        android:title="Logout"
+        android:icon="@drawable/logout"
+        />
 
 </menu>
