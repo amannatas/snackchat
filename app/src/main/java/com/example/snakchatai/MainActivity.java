@@ -2,6 +2,7 @@ package com.example.snakchatai;
 
 import android.app.Dialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import androidx.activity.OnBackPressedCallback;
 
@@ -23,6 +24,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.navigation.NavigationView;
+import com.google.firebase.auth.FirebaseAuth;
 
 public class MainActivity extends AppCompatActivity {
 DrawerLayout drawerLayout;
@@ -72,9 +74,10 @@ Toolbar toolbar;
                         public void onClick(View v) {
                             String password = MPIN.getText().toString();
                             if (password.equals("7410")) {
-                                Intent imain = new Intent(MainActivity.this, chat_screen.class);
+                                Intent imain = new Intent(MainActivity.this, fake_chat.class);
                                 startActivity(imain);
                                 dialog.dismiss();
+                                finish();
                             } else {
                                 Toast.makeText(MainActivity.this, "Worng password", Toast.LENGTH_SHORT).show();
                             }
@@ -83,27 +86,7 @@ Toolbar toolbar;
                     dialog.show();
 
                 }else if (id == R.id.logout){
-                    Dialog dialog = new Dialog(MainActivity.this);
-                    dialog.setContentView(R.layout.password_layout);
-                    dialog.setCancelable(false);
-                    EditText MPIN = dialog.findViewById(R.id.MPIN);
-                    Button btnenter = dialog.findViewById(R.id.btnenter);
-
-                    btnenter.setOnClickListener(new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            String password = MPIN.getText().toString();
-                            if (password.equals("7410")) {
-                                Intent imain = new Intent(MainActivity.this, login_screen.class);
-                                startActivity(imain);
-                                finish();
-                                dialog.dismiss();
-                            } else {
-                                Toast.makeText(MainActivity.this, "Worng password", Toast.LENGTH_SHORT).show();
-                            }
-                        }
-                    });
-                    dialog.show();
+                    logout();
 
                 } else if (id == R.id.setting) {
                     Toast.makeText(MainActivity.this, "No internet", Toast.LENGTH_SHORT).show();
@@ -116,6 +99,16 @@ Toolbar toolbar;
                 return true;
             }
         });
+    }
+    private void logout() {
+        FirebaseAuth.getInstance().signOut();
+        SharedPreferences prefs = getSharedPreferences("MyAppPrefs", MODE_PRIVATE);
+        prefs.edit().putBoolean("isLoggedIn", false).apply();
+
+        Intent intent = new Intent(MainActivity.this, splash_screen.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 
 }

@@ -1,6 +1,7 @@
 package com.example.snakchatai;
 
 import android.os.Bundle;
+import android.view.View;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,10 +16,23 @@ public class chat_screen extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_chat_screen);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+        View root = findViewById(R.id.main);
+        View bottomLayout = findViewById(R.id.bottom_layout);
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+
+            // Bottom layout ko nav bar ke upar push karo
+            bottomLayout.setPadding(
+                    bottomLayout.getPaddingLeft(),
+                    bottomLayout.getPaddingTop(),
+                    bottomLayout.getPaddingRight(),
+                    systemBars.bottom
+            );
+
             return insets;
         });
+
+
     }
 }

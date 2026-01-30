@@ -13,7 +13,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 public class login_screen extends AppCompatActivity {
-EditText phonenum, password;
+EditText phonenum;
 Button login;
 
     @Override
@@ -23,25 +23,35 @@ Button login;
         setContentView(R.layout.activity_login_screen);
 
         phonenum = findViewById(R.id.phonenum);
-        password = findViewById(R.id.password);
+
         login = findViewById(R.id.loginButton);
 
 
-        Intent imain = new Intent(login_screen.this, MainActivity.class);
-        login.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
 
-                String phone = phonenum.getText().toString().trim();
-                String pass = password.getText().toString().trim();
 
-                if (phone.equals("9639810546") && pass.equals("7410")) {
-                    startActivity(imain);
-                } else {
-                    phonenum.setError("Wrong Phone Number or Password");
-                }
+        login.setOnClickListener(v -> {
+
+            String input = phonenum.getText().toString().trim();
+
+            if (input.isEmpty()) {
+                phonenum.setError("Phone number required");
+                return;
             }
+
+            if (!input.matches("\\d{10}")) {
+                phonenum.setError("Enter valid 10-digit number");
+                return;
+            }
+
+            String phone = "+91" + input;
+
+            Intent intent = new Intent(login_screen.this, LoginOtpActivity.class);
+            intent.putExtra("phone", phone);
+
+            startActivity(intent);   // ✅ YAHI FIX HAI
         });
+
+
 
 
     }

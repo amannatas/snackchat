@@ -1,16 +1,18 @@
 package com.example.snakchatai;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
+
+import com.google.firebase.auth.FirebaseAuth;
 
 public class splash_screen extends AppCompatActivity {
+
+    private static final long SPLASH_DELAY = 1500; // 1.5 seconds
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -18,14 +20,22 @@ public class splash_screen extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_splash_screen);
 
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                Intent ihome = new Intent(splash_screen.this, login_screen.class);
-                startActivity(ihome);
-                finish();
+        new Handler().postDelayed(() -> {
+            SharedPreferences prefs = getSharedPreferences("MyAppPrefs", MODE_PRIVATE);
+
+            boolean isLoggedIn = prefs.getBoolean("isLoggedIn", false);
+
+
+            Intent nextIntent;
+            if (false) {
+                nextIntent = new Intent(splash_screen.this, MainActivity.class);
+            } else {
+                nextIntent = new Intent(splash_screen.this, login_screen.class);
             }
 
-        }, 1500);
+            startActivity(nextIntent);
+            finish();
+        }, SPLASH_DELAY);
+
     }
 }
