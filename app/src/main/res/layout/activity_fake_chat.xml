@@ -34,11 +34,12 @@
 
     </RelativeLayout>
 
+
     <androidx.recyclerview.widget.RecyclerView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/toolbar"
-        android:background="#A3E6C2"
+        android:background="#C4BDBD"
         android:layout_above="@id/bottombar"
 
         android:id="@+id/chat_recycler_view"/>

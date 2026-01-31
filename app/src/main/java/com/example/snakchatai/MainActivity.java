@@ -23,8 +23,10 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
+import com.example.snakchatai.utils.FirebaseUtil;
 import com.google.android.material.navigation.NavigationView;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 public class MainActivity extends AppCompatActivity {
 DrawerLayout drawerLayout;
@@ -86,7 +88,14 @@ Toolbar toolbar;
                     dialog.show();
 
                 }else if (id == R.id.logout){
-                    logout();
+
+                    SharedPreferences prefs = getSharedPreferences("MyAppPrefs", MODE_PRIVATE);
+                    SharedPreferences.Editor editor = prefs.edit();
+                    editor.putBoolean("isLoggedIn", false);
+                    editor.apply();
+                    Intent iout = new Intent(MainActivity.this, splash_screen.class);
+                    startActivity(iout);
+                    finish();
 
                 } else if (id == R.id.setting) {
                     Toast.makeText(MainActivity.this, "No internet", Toast.LENGTH_SHORT).show();
@@ -99,16 +108,17 @@ Toolbar toolbar;
                 return true;
             }
         });
+        getFCMToken();
     }
-    private void logout() {
-        FirebaseAuth.getInstance().signOut();
-        SharedPreferences prefs = getSharedPreferences("MyAppPrefs", MODE_PRIVATE);
-        prefs.edit().putBoolean("isLoggedIn", false).apply();
+    void getFCMToken(){
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if(task.isSuccessful()){
+                String token = task.getResult();
+                FirebaseUtil.currentUserDetails().update("fcmToken",token);
 
-        Intent intent = new Intent(MainActivity.this, splash_screen.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(intent);
-        finish();
+            }
+        });
     }
+
 
 }

@@ -137,6 +137,7 @@ public class LoginOtpActivity extends AppCompatActivity {
                             Map<String, Object> userData = new HashMap<>();
                             userData.put("phone", phoneNumber);
                             userData.put("lastLogin", System.currentTimeMillis());
+                            userData.put("userId", mAuth.getCurrentUser().getUid());
 
                             // Firestore me user document save kar (user UID ko document id bana ke)
                             db.collection("users")

@@ -35,15 +35,24 @@ android {
 }
 
 dependencies {
+
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)
-    
+    implementation(libs.okhttp)
+
+
+    implementation("com.firebaseui:firebase-ui-firestore:8.0.2")
+
+
+
+
     implementation(libs.constraintlayout)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
 
     androidTestImplementation(libs.ext.junit)
