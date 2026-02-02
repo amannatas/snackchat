@@ -2,7 +2,6 @@ package com.example.snakchatai.adapter;
 
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -10,7 +9,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.snakchatai.R;
 import com.example.snakchatai.chat_screen;
@@ -23,9 +21,10 @@ import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 public class HomeUserAdapter
         extends FirestoreRecyclerAdapter<UserModel, HomeUserAdapter.UserViewHolder> {
 
-    Context context;
+    private final Context context;
 
-    public HomeUserAdapter(@NonNull FirestoreRecyclerOptions<UserModel> options, Context context) {
+    public HomeUserAdapter(@NonNull FirestoreRecyclerOptions<UserModel> options,
+                           Context context) {
         super(options);
         this.context = context;
     }
@@ -38,19 +37,16 @@ public class HomeUserAdapter
         holder.username.setText(model.getUsername());
         holder.phone.setText(model.getPhone());
 
-        // Profile pic
         FirebaseUtil.getOtherProfilePicStorageRef(model.getUserId())
                 .getDownloadUrl()
                 .addOnSuccessListener(uri ->
                         AndroidUtil.setProfilePic(context, uri, holder.profilePic)
                 );
 
-        // 🔥 CLICK → CHAT SCREEN
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, chat_screen.class);
             AndroidUtil.passUserModelAsIntent(intent, model);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
+            context.startActivity(intent); // ✅ NO FLAGS
         });
     }
 
@@ -62,7 +58,7 @@ public class HomeUserAdapter
         return new UserViewHolder(view);
     }
 
-    static class UserViewHolder extends RecyclerView.ViewHolder {
+    static class UserViewHolder extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
         TextView username, phone;
         ImageView profilePic;
 

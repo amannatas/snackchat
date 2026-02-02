@@ -4,17 +4,17 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.activity.OnBackPressedCallback;
 
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.example.snakchatai.adapter.ChatRecyclerAdapter;
-import com.example.snakchatai.adapter.SearchUserRecyclerAdapter;
 import com.example.snakchatai.model.ChatMessageModel;
 import com.example.snakchatai.model.ChatroomModel;
 import com.example.snakchatai.model.UserModel;
@@ -25,14 +25,11 @@ import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.DocumentReference;
-import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.Query;
 
-import org.checkerframework.checker.units.qual.C;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.sql.Time;
 import java.util.Arrays;
 
 import okhttp3.Call;
@@ -57,14 +54,17 @@ public class chat_screen extends AppCompatActivity {
     RecyclerView recyclerView;
     ImageView imageView;
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat_screen);
 
-        //get UserModel
         otherUser = AndroidUtil.getUserModelFromIntent(getIntent());
+        if (otherUser == null) {
+            finish();
+            return;
+        }
+
         chatroomId = FirebaseUtil.getChatroomId(FirebaseUtil.currentUserId(), otherUser.getUserId());
 
         messageInput = findViewById(R.id.chat_message_input);
@@ -82,20 +82,29 @@ public class chat_screen extends AppCompatActivity {
                     }
                 });
 
-        backBtn.setOnClickListener((v) -> {
-            onBackPressed();
-        });
+        backBtn.setOnClickListener(v -> onBackPressed());
+
         otherUsername.setText(otherUser.getUsername());
 
-        sendMessageBtn.setOnClickListener((v -> {
+        sendMessageBtn.setOnClickListener(v -> {
             String message = messageInput.getText().toString().trim();
-            if (message.isEmpty())
-                return;
+            if (message.isEmpty()) return;
             sendMessageToUser(message);
-        }));
+        });
 
         getOrCreateChatroomModel();
         setupChatRecyclerView();
+
+        // AndroidX back press dispatcher
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                Intent intent = new Intent(chat_screen.this, fake_chat.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(intent);
+                finish();
+            }
+        });
     }
 
     void setupChatRecyclerView() {
@@ -111,16 +120,17 @@ public class chat_screen extends AppCompatActivity {
         recyclerView.setLayoutManager(manager);
         recyclerView.setAdapter(adapter);
         adapter.startListening();
+
         adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
             @Override
             public void onItemRangeInserted(int positionStart, int itemCount) {
-                super.onItemRangeInserted(positionStart, itemCount);
                 recyclerView.smoothScrollToPosition(0);
             }
         });
     }
 
     void sendMessageToUser(String message) {
+        if (chatroomModel == null) return; // avoid crash
 
         chatroomModel.setLastMessageTimestamp(Timestamp.now());
         chatroomModel.setLastMessageSenderId(FirebaseUtil.currentUserId());
@@ -129,13 +139,10 @@ public class chat_screen extends AppCompatActivity {
 
         ChatMessageModel chatMessageModel = new ChatMessageModel(message, FirebaseUtil.currentUserId(), Timestamp.now());
         FirebaseUtil.getChatroomMessageReference(chatroomId).add(chatMessageModel)
-                .addOnCompleteListener(new OnCompleteListener<DocumentReference>() {
-                    @Override
-                    public void onComplete(@NonNull Task<DocumentReference> task) {
-                        if (task.isSuccessful()) {
-                            messageInput.setText("");
-                            sendNotification(message);
-                        }
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        messageInput.setText("");
+                        sendNotification(message);
                     }
                 });
     }
@@ -145,7 +152,6 @@ public class chat_screen extends AppCompatActivity {
             if (task.isSuccessful()) {
                 chatroomModel = task.getResult().toObject(ChatroomModel.class);
                 if (chatroomModel == null) {
-                    //first time chat
                     chatroomModel = new ChatroomModel(
                             chatroomId,
                             Arrays.asList(FirebaseUtil.currentUserId(), otherUser.getUserId()),
@@ -159,7 +165,6 @@ public class chat_screen extends AppCompatActivity {
     }
 
     void sendNotification(String message) {
-
         FirebaseUtil.currentUserDetails().get().addOnCompleteListener(task -> {
             if (task.isSuccessful()) {
                 UserModel currentUser = task.getResult().toObject(UserModel.class);
@@ -179,14 +184,11 @@ public class chat_screen extends AppCompatActivity {
 
                     callApi(jsonObject);
 
-
                 } catch (Exception e) {
-
+                    e.printStackTrace();
                 }
-
             }
         });
-
     }
 
     void callApi(JSONObject jsonObject) {
@@ -202,17 +204,25 @@ public class chat_screen extends AppCompatActivity {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@NonNull Call call, @NonNull IOException e) {
-
+                e.printStackTrace();
             }
 
             @Override
             public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-
+                // Optional: Handle response if needed
             }
         });
+    }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (adapter != null) adapter.startListening();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (adapter != null) adapter.stopListening();
     }
 }
-
-
-
