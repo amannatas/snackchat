@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:allowBackup="true"
@@ -11,15 +14,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Snakchatai">
+
         <activity
             android:name=".LoginUsernameActivity"
             android:exported="false" />
         <activity
             android:name=".LoginOtpActivity"
             android:exported="false" />
-        <activity
-            android:name=".call"
-            android:exported="false" />
+
         <activity
             android:name=".icon_change"
             android:exported="false" />
@@ -46,10 +48,10 @@
         </activity>
 
         <activity-alias
-            android:name=".icon_alt3"
+            android:name=".icon_alt1"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ai"
+            android:icon="@mipmap/ic_new"
             android:targetActivity=".splash_screen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -70,10 +72,10 @@
             </intent-filter>
         </activity-alias>
         <activity-alias
-            android:name=".icon_alt1"
+            android:name=".icon_alt3"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_new"
+            android:icon="@mipmap/ai"
             android:targetActivity=".splash_screen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -86,9 +88,12 @@
             android:name=".MainActivity"
             android:exported="false"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
-        <service android:name=".FCMNotificationService" android:exported="false">
+
+        <service
+            android:name=".FCMNotificationService"
+            android:exported="false">
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
     </application>

@@ -1,5 +1,7 @@
 package com.example.snakchatai.model;
 
+
+
 import com.google.firebase.Timestamp;
 
 public class UserModel {

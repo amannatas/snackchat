@@ -1,30 +1,23 @@
 package com.example.snakchatai;
 
-import android.content.Intent;
 import android.os.Bundle;
 import android.view.MenuItem;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 
-import com.example.snakchatai.adapter.HomeUserAdapter;
-import com.example.snakchatai.model.UserModel;
-import com.example.snakchatai.utils.FirebaseUtil;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import com.google.firebase.firestore.Query;
-import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 
 public class fake_chat extends AppCompatActivity {
 
     BottomNavigationView bnview;
-    RecyclerView recyclerView;
-    HomeUserAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,58 +31,59 @@ public class fake_chat extends AppCompatActivity {
             return insets;
         });
 
-        // ---------- RecyclerView ----------
-        recyclerView = findViewById(R.id.chat_recycler_view);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-
-        Query query = FirebaseUtil.allUserCollectionReference()
-                .whereNotEqualTo("userId", FirebaseUtil.currentUserId());
-
-        FirestoreRecyclerOptions<UserModel> options =
-                new FirestoreRecyclerOptions.Builder<UserModel>()
-                        .setQuery(query, UserModel.class)
-                        .build();
-
-        adapter = new HomeUserAdapter(options, this);
-        recyclerView.setAdapter(adapter);
-
-        // ---------- Bottom Navigation ----------
         bnview = findViewById(R.id.bottombar);
+
+        // Initial fragment load with backstack add
+        if (savedInstanceState == null) {
+            loadFragment(new home(), true);  // initial fragment bhi backstack me add karo
+            bnview.setSelectedItemId(R.id.home);
+        }
 
         bnview.setOnNavigationItemSelectedListener(new BottomNavigationView.OnNavigationItemSelectedListener() {
             @Override
             public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-
                 int id = item.getItemId();
 
                 if (id == R.id.home) {
-                    // already on home
+                    loadFragment(new home(), true);
                     return true;
 
                 } else if (id == R.id.call) {
-                    startActivity(new Intent(fake_chat.this, call.class));
+                    loadFragment(new call_fragment(), true);
                     return true;
 
                 } else if (id == R.id.icon) {
-                    startActivity(new Intent(fake_chat.this, icon_change.class));
+                    loadFragment(new IconChangeFragment(), true);
                     return true;
                 }
-
                 return false;
+            }
+        });
+
+        // Back press callback using OnBackPressedDispatcher
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                FragmentManager fm = getSupportFragmentManager();
+                if (fm.getBackStackEntryCount() > 1) {
+                    fm.popBackStack();
+                } else {
+                    // Back stack me last fragment, default back behavior (app close)
+                    setEnabled(false);
+                    onBackPressed();
+                }
             }
         });
     }
 
-    // ---------- Firestore lifecycle ----------
-    @Override
-    protected void onStart() {
-        super.onStart();
-        if (adapter != null) adapter.startListening();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (adapter != null) adapter.stopListening();
+    // Fragment load method with option to add to backstack
+    public void loadFragment(Fragment fragment, boolean addToBackStack) {
+        FragmentManager fm = getSupportFragmentManager();
+        androidx.fragment.app.FragmentTransaction ft = fm.beginTransaction()
+                .replace(R.id.fragment_container, fragment);
+        if (addToBackStack) {
+            ft.addToBackStack(null);
+        }
+        ft.commit();
     }
 }

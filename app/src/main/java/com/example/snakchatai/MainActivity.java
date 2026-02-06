@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import androidx.activity.OnBackPressedCallback;
 
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -114,7 +115,7 @@ Toolbar toolbar;
         FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
             if(task.isSuccessful()){
                 String token = task.getResult();
-                FirebaseUtil.currentUserDetails().update("fcmToken",token);
+                Log.i("my token",token);
 
             }
         });

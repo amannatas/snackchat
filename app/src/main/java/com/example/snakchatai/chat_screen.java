@@ -74,15 +74,18 @@ public class chat_screen extends AppCompatActivity {
         recyclerView = findViewById(R.id.chat_recycler_view);
         imageView = findViewById(R.id.profile_pic_image_view);
 
-        FirebaseUtil.getOtherProfilePicStorageRef(otherUser.getUserId()).getDownloadUrl()
-                .addOnCompleteListener(t -> {
-                    if (t.isSuccessful()) {
-                        Uri uri = t.getResult();
-                        AndroidUtil.setProfilePic(this, uri, imageView);
+
+
+        backBtn.setOnClickListener(v -> {
+            finish();   // activity seedha band
+        });
+        getOnBackPressedDispatcher().addCallback(this,
+                new OnBackPressedCallback(true) {
+                    @Override
+                    public void handleOnBackPressed() {
+                        finish(); // EXACT same behavior
                     }
                 });
-
-        backBtn.setOnClickListener(v -> onBackPressed());
 
         otherUsername.setText(otherUser.getUsername());
 
@@ -95,16 +98,8 @@ public class chat_screen extends AppCompatActivity {
         getOrCreateChatroomModel();
         setupChatRecyclerView();
 
-        // AndroidX back press dispatcher
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                Intent intent = new Intent(chat_screen.this, fake_chat.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                startActivity(intent);
-                finish();
-            }
-        });
+
+
     }
 
     void setupChatRecyclerView() {
@@ -142,7 +137,7 @@ public class chat_screen extends AppCompatActivity {
                 .addOnCompleteListener(task -> {
                     if (task.isSuccessful()) {
                         messageInput.setText("");
-                        sendNotification(message);
+
                     }
                 });
     }
@@ -164,55 +159,9 @@ public class chat_screen extends AppCompatActivity {
         });
     }
 
-    void sendNotification(String message) {
-        FirebaseUtil.currentUserDetails().get().addOnCompleteListener(task -> {
-            if (task.isSuccessful()) {
-                UserModel currentUser = task.getResult().toObject(UserModel.class);
-                try {
-                    JSONObject jsonObject = new JSONObject();
 
-                    JSONObject notificationObj = new JSONObject();
-                    notificationObj.put("title", currentUser.getUsername());
-                    notificationObj.put("body", message);
 
-                    JSONObject dataObj = new JSONObject();
-                    dataObj.put("userId", currentUser.getUserId());
 
-                    jsonObject.put("notification", notificationObj);
-                    jsonObject.put("data", dataObj);
-                    jsonObject.put("to", otherUser.getFcmToken());
-
-                    callApi(jsonObject);
-
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-    }
-
-    void callApi(JSONObject jsonObject) {
-        MediaType JSON = MediaType.get("application/json; charset=utf-8");
-        OkHttpClient client = new OkHttpClient();
-        String url = "https://fcm.googleapis.com/fcm/send";
-        RequestBody body = RequestBody.create(jsonObject.toString(), JSON);
-        Request request = new Request.Builder()
-                .url(url)
-                .post(body)
-                .header("Authorization", "Bearer YOUR_API_KEY")
-                .build();
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                e.printStackTrace();
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                // Optional: Handle response if needed
-            }
-        });
-    }
 
     @Override
     protected void onStart() {
@@ -225,4 +174,5 @@ public class chat_screen extends AppCompatActivity {
         super.onStop();
         if (adapter != null) adapter.stopListening();
     }
+
 }
