@@ -1,64 +1,193 @@
 package com.example.snakchatai;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
-
-import androidx.fragment.app.Fragment;
-
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
-/**
- * A simple {@link Fragment} subclass.
- * Use the {@link call_fragment#newInstance} factory method to
- * create an instance of this fragment.
- */
-public class call_fragment extends Fragment {
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.Fragment;
 
-    // TODO: Rename parameter arguments, choose names that match
-    // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
-    private static final String ARG_PARAM1 = "param1";
-    private static final String ARG_PARAM2 = "param2";
+import com.example.snakchatai.databinding.FragmentCallBinding;
+import com.example.snakchatai.repository.MainRepository;
+import com.example.snakchatai.utils.DataModelType;
 
-    // TODO: Rename and change types of parameters
-    private String mParam1;
-    private String mParam2;
+public class call_fragment extends Fragment implements MainRepository.Listener {
 
-    public call_fragment() {
-        // Required empty public constructor
-    }
+    private FragmentCallBinding views;
+    private MainRepository mainRepository;
 
-    /**
-     * Use this factory method to create a new instance of
-     * this fragment using the provided parameters.
-     *
-     * @param param1 Parameter 1.
-     * @param param2 Parameter 2.
-     * @return A new instance of fragment call_fragment.
-     */
-    // TODO: Rename and change types and number of parameters
-    public static call_fragment newInstance(String param1, String param2) {
-        call_fragment fragment = new call_fragment();
-        Bundle args = new Bundle();
-        args.putString(ARG_PARAM1, param1);
-        args.putString(ARG_PARAM2, param2);
-        fragment.setArguments(args);
-        return fragment;
+    private boolean isCameraMuted = false;
+    private boolean isMicrophoneMuted = false;
+
+    private static final int PERMISSION_REQUEST_CODE = 101;
+
+    @Nullable
+    @Override
+    public View onCreateView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState
+    ) {
+        views = FragmentCallBinding.inflate(inflater, container, false);
+        return views.getRoot();
     }
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        if (getArguments() != null) {
-            mParam1 = getArguments().getString(ARG_PARAM1);
-            mParam2 = getArguments().getString(ARG_PARAM2);
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        if (hasPermissions()) {
+            onPermissionGranted();
+        } else {
+            requestPermissions(
+                    new String[]{
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.RECORD_AUDIO
+                    },
+                    PERMISSION_REQUEST_CODE
+            );
         }
     }
 
+    private boolean hasPermissions() {
+        return ContextCompat.checkSelfPermission(
+                requireContext(), Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(
+                requireContext(), Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED;
+    }
+
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState) {
-        // Inflate the layout for this fragment
-        return inflater.inflate(R.layout.fragment_call, container, false);
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            boolean granted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    granted = false;
+                    break;
+                }
+            }
+
+            if (granted) {
+                onPermissionGranted();
+            } else {
+                Toast.makeText(
+                        requireContext(),
+                        "Camera & Microphone permission required",
+                        Toast.LENGTH_LONG
+                ).show();
+                requireActivity().onBackPressed();
+            }
+        }
+    }
+
+    // 🔥 SINGLE ENTRY POINT AFTER PERMISSION
+    private void onPermissionGranted() {
+        String username = "user123"; // real username yahan pass kar
+
+        mainRepository = MainRepository.getInstance();
+        mainRepository.listener = this;
+
+        mainRepository.login(
+                username,
+                requireContext(),
+                this::initUI // ⚠️ WebRTC init sirf yahin se
+        );
+    }
+
+    private void initUI() {
+
+        views.callBtn.setOnClickListener(v -> {
+            String target = views.targetUserNameEt.getText().toString().trim();
+            if (target.isEmpty()) {
+                Toast.makeText(requireContext(), "Enter username", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            mainRepository.sendCallRequest(target, () ->
+                    Toast.makeText(requireContext(),
+                            "User not found",
+                            Toast.LENGTH_SHORT).show()
+            );
+        });
+
+        // 🔥 Camera init AB safe hai
+        mainRepository.initLocalView(views.localView);
+        mainRepository.initRemoteView(views.remoteView);
+
+        mainRepository.subscribeForLatestEvent(data -> {
+            if (data.getType() == DataModelType.StartCall) {
+                requireActivity().runOnUiThread(() -> {
+                    views.incomingNameTV.setText(
+                            data.getSender() + " is calling you"
+                    );
+                    views.incomingCallLayout.setVisibility(View.VISIBLE);
+
+                    views.acceptButton.setOnClickListener(v -> {
+                        mainRepository.startCall(data.getSender());
+                        views.incomingCallLayout.setVisibility(View.GONE);
+                    });
+
+                    views.rejectButton.setOnClickListener(v ->
+                            views.incomingCallLayout.setVisibility(View.GONE)
+                    );
+                });
+            }
+        });
+
+        views.switchCameraButton.setOnClickListener(v ->
+                mainRepository.switchCamera()
+        );
+
+        views.micButton.setOnClickListener(v -> {
+            mainRepository.toggleAudio(isMicrophoneMuted);
+            isMicrophoneMuted = !isMicrophoneMuted;
+        });
+
+        views.videoButton.setOnClickListener(v -> {
+            mainRepository.toggleVideo(isCameraMuted);
+            isCameraMuted = !isCameraMuted;
+        });
+
+        views.endCallButton.setOnClickListener(v -> {
+            mainRepository.endCall();
+            requireActivity()
+                    .getSupportFragmentManager()
+                    .popBackStack();
+        });
+    }
+
+    @Override
+    public void webrtcConnected() {
+        requireActivity().runOnUiThread(() -> {
+            views.incomingCallLayout.setVisibility(View.GONE);
+            views.whoToCallLayout.setVisibility(View.GONE);
+            views.callLayout.setVisibility(View.VISIBLE);
+        });
+    }
+
+    @Override
+    public void webrtcClosed() {
+        requireActivity().runOnUiThread(() ->
+                requireActivity()
+                        .getSupportFragmentManager()
+                        .popBackStack()
+        );
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        views = null;
     }
 }

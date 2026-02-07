@@ -1,21 +1,51 @@
-const express = require('express');
-const cors = require('cors');
+import admin from "firebase-admin";
+import express from "express";
+import bodyParser from "body-parser";
+import fetch from "node-fetch";
+
+// Firebase service account JSON
+import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://<YOUR-FIREBASE-PROJECT>.firebaseio.com"
+});
+
+const db = admin.database();
 const app = express();
+app.use(bodyParser.json());
 
-// Enable JSON body parsing
-app.use(express.json());
-app.use(cors());
+let lastChecked = Date.now();
 
-// Example route (Firebase function example)
-app.post('/send-message', (req, res) => {
-    const message = req.body.message;
-    console.log("Message received:", message);
-    // Yahan apna Firebase ya AI logic call kar sakte ho
-    res.json({ reply: `Server received: ${message}` });
-});
+// Polling route for Render to keep alive
+app.get("/", (req, res) => res.send("Server is running"));
 
-// Start server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+// Poll every 5 seconds
+setInterval(async () => {
+  const snapshot = await db.ref("messages").orderByChild("timestamp").startAt(lastChecked).once("value");
+  const messages = snapshot.val();
+  if (messages) {
+    lastChecked = Date.now();
+    Object.values(messages).forEach(async (msg) => {
+      const token = msg.toToken; // Store receiver's FCM token in DB
+      if (!token) return;
+
+      const payload = {
+        notification: {
+          title: `New message from ${msg.from}`,
+          body: msg.text,
+        }
+      };
+
+      try {
+        await admin.messaging().sendToDevice(token, payload);
+        console.log("Notification sent:", msg.text);
+      } catch (err) {
+        console.error("Error sending notification:", err);
+      }
+    });
+  }
+}, 5000);
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

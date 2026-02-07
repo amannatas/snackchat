@@ -24,6 +24,8 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
+import com.example.snakchatai.model.UserModel;
+import com.example.snakchatai.repository.MainRepository;
 import com.example.snakchatai.utils.FirebaseUtil;
 import com.google.android.material.navigation.NavigationView;
 import com.google.firebase.auth.FirebaseAuth;
@@ -38,6 +40,33 @@ Toolbar toolbar;
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
+        FirebaseUtil.getCurrentUsername(task -> {
+            if (!task.isSuccessful() || task.getResult() == null) {
+                // login state broken
+                startActivity(new Intent(this, login_screen.class));
+                finish();
+                return;
+            }
+
+            UserModel user = task.getResult().toObject(UserModel.class);
+
+            if (user == null || user.getUsername() == null) {
+                // username missing = NO CALL
+                startActivity(new Intent(this, LoginUsernameActivity.class));
+                finish();
+                return;
+            }
+
+            // 🔥 NOW AND ONLY NOW WebRTC login
+            MainRepository.getInstance().login(
+                    user.getUsername(),
+                    this,
+                    () -> {
+                        Log.d("WEBRTC", "WebRTC login success");
+                    }
+            );
+        });
+
 
 
         drawerLayout = findViewById(R.id.main);
@@ -89,6 +118,7 @@ Toolbar toolbar;
                     dialog.show();
 
                 }else if (id == R.id.logout){
+                    FirebaseAuth.getInstance().signOut();
 
                     SharedPreferences prefs = getSharedPreferences("MyAppPrefs", MODE_PRIVATE);
                     SharedPreferences.Editor editor = prefs.edit();

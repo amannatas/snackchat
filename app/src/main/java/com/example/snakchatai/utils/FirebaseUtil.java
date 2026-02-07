@@ -1,9 +1,11 @@
 package com.example.snakchatai.utils;
 
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
@@ -77,6 +79,12 @@ public class FirebaseUtil {
         return FirebaseStorage.getInstance().getReference().child("profile_pic")
                 .child(otherUserId);
     }
+    public static void getCurrentUsername(
+            OnCompleteListener<DocumentSnapshot> listener
+    ) {
+        currentUserDetails().get().addOnCompleteListener(listener);
+    }
+
 
 
 }
