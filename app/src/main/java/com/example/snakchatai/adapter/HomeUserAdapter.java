@@ -41,7 +41,9 @@ public class HomeUserAdapter
                 .getDownloadUrl()
                 .addOnSuccessListener(uri ->
                         AndroidUtil.setProfilePic(context, uri, holder.profilePic)
-                );
+                ).addOnFailureListener(e -> {
+                    holder.profilePic.setImageResource(R.drawable.ic_profile);
+                });
 
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, chat_screen.class);

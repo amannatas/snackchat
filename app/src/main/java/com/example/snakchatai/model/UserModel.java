@@ -14,11 +14,12 @@ public class UserModel {
     public UserModel() {
     }
 
-    public UserModel(String phone, String username, Timestamp createdTimestamp,String userId) {
+    public UserModel(String phone, String username, Timestamp createdTimestamp,String userId,String fcmToken) {
         this.phone = phone;
         this.username = username;
         this.createdTimestamp = createdTimestamp;
         this.userId = userId;
+        this.fcmToken = fcmToken;
     }
 
     public String getPhone() {

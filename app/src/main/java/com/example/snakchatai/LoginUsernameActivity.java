@@ -16,6 +16,7 @@ import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 public class LoginUsernameActivity extends AppCompatActivity {
 
@@ -55,7 +56,13 @@ public class LoginUsernameActivity extends AppCompatActivity {
         if (userModel != null) {
             userModel.setUsername(username);
         } else {
-            userModel = new UserModel(phoneNumber, username, Timestamp.now(), FirebaseUtil.currentUserId());
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    String fcmToken = task.getResult();
+                    userModel = new UserModel(phoneNumber, username, Timestamp.now(), FirebaseUtil.currentUserId(), fcmToken);
+                }
+            });
+
         }
 
         FirebaseUtil.currentUserDetails().set(userModel).addOnCompleteListener(new OnCompleteListener<Void>() {

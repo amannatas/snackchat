@@ -31,6 +31,7 @@ public class fake_chat extends AppCompatActivity {
             return insets;
         });
 
+
         bnview = findViewById(R.id.bottombar);
 
         // Initial fragment load with backstack add
