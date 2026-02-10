@@ -46,6 +46,16 @@
             app:tint="@color/white"
             android:layout_centerVertical="true"
             android:id="@+id/back_btn"/>
+        <ImageButton
+            android:layout_height="50dp"
+            android:layout_width="50dp"
+
+            android:layout_alignParentEnd="true"
+            android:id="@+id/video_call_btn"
+            android:src="@drawable/ic_accept"
+
+            android:background="@android:color/transparent"/>
+
 
     </RelativeLayout>
 
@@ -73,12 +83,24 @@
             android:layout_marginTop="10dp"
             android:layout_marginEnd="10dp"
             android:layout_marginBottom="10dp"
-            android:layout_toLeftOf="@id/message_send_btn"
+            android:layout_toStartOf="@id/attach_file_btn"
             android:background="@drawable/btn_round"
             android:elevation="4dp"
             android:hint="Ask Snakchat AI"
             android:padding="10dp"
             android:id="@+id/chat_message_input"/>
+
+        <ImageButton
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_attach_file"
+            android:layout_toStartOf="@id/message_send_btn"
+            android:layout_centerInParent="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:id="@+id/attach_file_btn"
+            android:padding="8dp"
+            android:layout_marginStart="10dp"
+            />
 
         <ImageButton
             android:layout_width="48dp"

@@ -13,6 +13,7 @@
         android:layout_marginEnd="80dp"
         android:id="@+id/left_chat_layout"
         android:orientation="vertical">
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -20,7 +21,16 @@
             android:textSize="18sp"
             android:text="Hello"
             android:id="@+id/left_chat_textview"/>
+
+        <ImageView
+            android:id="@+id/left_chat_imageview"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"/>
+
     </LinearLayout>
+
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -29,13 +39,23 @@
         android:layout_alignParentEnd="true"
         android:padding="8dp"
         android:layout_marginStart="80dp"
-        android:id="@+id/right_chat_layout">
+        android:id="@+id/right_chat_layout"
+        android:orientation="vertical">
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/white"
             android:textSize="18sp"
             android:id="@+id/right_chat_textview"/>
+
+        <ImageView
+            android:id="@+id/right_chat_imageview"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"/>
+
     </LinearLayout>
 
 </RelativeLayout>

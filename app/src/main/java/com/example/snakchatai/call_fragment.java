@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment;
 
 import com.example.snakchatai.databinding.FragmentCallBinding;
 import com.example.snakchatai.repository.MainRepository;
+import com.example.snakchatai.utils.DataModelType;
 import com.example.snakchatai.utils.FirebaseUtil;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -29,7 +30,7 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
 
     private static final int PERMISSION_REQUEST_CODE = 101;
 
-    private String targetUserId = "OTHER_USER_ID_HERE"; // <-- Yeh id daal de, jiska username chahiye
+    private String targetUserId;
 
     @Nullable
     @Override
@@ -40,6 +41,14 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
     ) {
         views = FragmentCallBinding.inflate(inflater, container, false);
         return views.getRoot();
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            targetUserId = getArguments().getString("targetUserId");
+        }
     }
 
     @Override
@@ -96,7 +105,6 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
         }
     }
 
-    // 🔥 SINGLE ENTRY POINT AFTER PERMISSION
     private void onPermissionGranted() {
         mainRepository = MainRepository.getInstance();
         mainRepository.listener = this;
@@ -104,56 +112,51 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
         mainRepository.login(
                 FirebaseUtil.currentUserId(),
                 requireContext(),
-                this::initUI // WebRTC init sirf yahin se
+                this::initUI
         );
     }
 
     private void initUI() {
+        if (targetUserId != null) {
+            FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(targetUserId)
+                    .get()
+                    .addOnCompleteListener(task -> {
+                        if (task.isSuccessful()) {
+                            DocumentSnapshot doc = task.getResult();
+                            if (doc != null && doc.exists()) {
+                                String otherUsername = doc.getString("username");
 
-        // Pehle Firebase se other user ka username fetch kar le
-        FirebaseFirestore.getInstance()
-                .collection("users") // <-- apne collection ka naam yahan daal
-                .document(targetUserId)
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        DocumentSnapshot doc = task.getResult();
-                        if (doc != null && doc.exists()) {
-                            String otherUsername = doc.getString("username"); // <-- apne field ka naam yahan daal
+                                if (otherUsername == null || otherUsername.isEmpty()) {
+                                    Toast.makeText(requireContext(), "Username not found", Toast.LENGTH_SHORT).show();
+                                    return;
+                                }
 
-                            if (otherUsername == null || otherUsername.isEmpty()) {
-                                Toast.makeText(requireContext(), "Username not found", Toast.LENGTH_SHORT).show();
-                                return;
+                                views.incomingNameTV.setText("Calling " + otherUsername);
+
+                                views.callBtn.setOnClickListener(v -> {
+                                    mainRepository.sendCallRequest(targetUserId, () ->
+                                            Toast.makeText(requireContext(), "User not found", Toast.LENGTH_SHORT).show()
+                                    );
+                                });
+
+                            } else {
+                                Toast.makeText(requireContext(), "User data not found", Toast.LENGTH_SHORT).show();
                             }
-
-                            // Display the username
-                            views.incomingNameTV.setText("Calling " + otherUsername);
-
-                            // Use targetUserId to send the call request
-                            views.callBtn.setOnClickListener(v -> {
-                                mainRepository.sendCallRequest(targetUserId, () ->
-                                        Toast.makeText(requireContext(), "User not found", Toast.LENGTH_SHORT).show()
-                                );
-                            });
-
                         } else {
-                            Toast.makeText(requireContext(), "User data not found", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(requireContext(), "Failed to fetch user", Toast.LENGTH_SHORT).show();
                         }
-                    } else {
-                        Toast.makeText(requireContext(), "Failed to fetch user", Toast.LENGTH_SHORT).show();
-                    }
-                });
+                    });
+        }
 
-        // Camera & views init
         mainRepository.initLocalView(views.localView);
         mainRepository.initRemoteView(views.remoteView);
 
         mainRepository.subscribeForLatestEvent(data -> {
-            if (data.getType() == com.example.snakchatai.utils.DataModelType.StartCall) {
+            if (data.getType() == DataModelType.StartCall) {
                 requireActivity().runOnUiThread(() -> {
-                    views.incomingNameTV.setText(
-                            data.getSender() + " is calling you"
-                    );
+                    views.incomingNameTV.setText(data.getSender() + " is calling you");
                     views.incomingCallLayout.setVisibility(View.VISIBLE);
 
                     views.acceptButton.setOnClickListener(v -> {
@@ -161,9 +164,10 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
                         views.incomingCallLayout.setVisibility(View.GONE);
                     });
 
-                    views.rejectButton.setOnClickListener(v ->
-                            views.incomingCallLayout.setVisibility(View.GONE)
-                    );
+                    views.rejectButton.setOnClickListener(v -> {
+                        views.incomingCallLayout.setVisibility(View.GONE);
+                        mainRepository.rejectCall();
+                    });
                 });
             }
         });
@@ -184,9 +188,6 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
 
         views.endCallButton.setOnClickListener(v -> {
             mainRepository.endCall();
-            requireActivity()
-                    .getSupportFragmentManager()
-                    .popBackStack();
         });
     }
 
@@ -201,11 +202,13 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
 
     @Override
     public void webrtcClosed() {
-        requireActivity().runOnUiThread(() ->
-                requireActivity()
-                        .getSupportFragmentManager()
-                        .popBackStack()
-        );
+        requireActivity().runOnUiThread(this::popFragment);
+    }
+
+    private void popFragment() {
+        if (isAdded()) {
+            requireActivity().getSupportFragmentManager().popBackStack();
+        }
     }
 
     @Override
@@ -214,3 +217,4 @@ public class call_fragment extends Fragment implements MainRepository.Listener {
         views = null;
     }
 }
+

@@ -3,6 +3,7 @@ package com.example.snakchatai.adapter;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,8 +13,8 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.snakchatai.chat_screen;
 import com.example.snakchatai.R;
+import com.example.snakchatai.chat_screen;
 import com.example.snakchatai.model.UserModel;
 import com.example.snakchatai.utils.AndroidUtil;
 import com.example.snakchatai.utils.FirebaseUtil;
@@ -48,8 +49,7 @@ public class SearchUserRecyclerAdapter extends FirestoreRecyclerAdapter<UserMode
         holder.itemView.setOnClickListener(v -> {
             //navigate to chat activity
             Intent intent = new Intent(context, chat_screen.class);
-            AndroidUtil.passUserModelAsIntent(intent,model);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.putExtra("user", model);
             context.startActivity(intent);
         });
     }

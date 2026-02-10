@@ -50,7 +50,7 @@ public class fake_chat extends AppCompatActivity {
                     return true;
 
                 } else if (id == R.id.call) {
-                    loadFragment(new call_fragment(), true);
+                    loadFragment(new CallLogFragment(), true);
                     return true;
 
                 } else if (id == R.id.icon) {

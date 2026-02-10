@@ -79,12 +79,18 @@ public class FirebaseUtil {
         return FirebaseStorage.getInstance().getReference().child("profile_pic")
                 .child(otherUserId);
     }
+
+    public static StorageReference getChatroomImageStorageRef(String chatroomId) {
+        return FirebaseStorage.getInstance().getReference().child("chatroom_images").child(chatroomId);
+    }
+
+    public static CollectionReference getCallLogCollectionReference(String userId) {
+        return allUserCollectionReference().document(userId).collection("calls");
+    }
+
     public static void getCurrentUsername(
             OnCompleteListener<DocumentSnapshot> listener
     ) {
         currentUserDetails().get().addOnCompleteListener(listener);
     }
-
-
-
 }

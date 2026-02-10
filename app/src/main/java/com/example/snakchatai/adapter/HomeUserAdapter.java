@@ -2,6 +2,7 @@ package com.example.snakchatai.adapter;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,15 +48,17 @@ public class HomeUserAdapter
 
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, chat_screen.class);
-            AndroidUtil.passUserModelAsIntent(intent, model);
-            context.startActivity(intent); // ✅ NO FLAGS
+            Bundle args = new Bundle();
+            args.putParcelable("user", model);
+            intent.putExtras(args);
+            context.startActivity(intent);
         });
     }
 
     @NonNull
     @Override
     public UserViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(context)
+        View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.search_user_recycler_raw, parent, false);
         return new UserViewHolder(view);
     }

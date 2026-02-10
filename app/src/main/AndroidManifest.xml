@@ -39,10 +39,6 @@
             android:name=".icon_change"
             android:exported="false" />
         <activity
-            android:name=".chat_screen"
-            android:exported="false"
-            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
-        <activity
             android:name=".fake_chat"
             android:exported="false"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
@@ -99,6 +95,10 @@
 
         <activity
             android:name=".MainActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+        <activity
+            android:name=".chat_screen"
             android:exported="false"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 

@@ -2,14 +2,17 @@ package com.example.snakchatai.repository;
 
 import android.content.Context;
 
+import com.example.snakchatai.model.CallLogModel;
 import com.example.snakchatai.remote.FirebaseClient;
 import com.example.snakchatai.utils.DataModel;
 import com.example.snakchatai.utils.DataModelType;
 import com.example.snakchatai.utils.ErrorCallBack;
 import com.example.snakchatai.utils.NewEventCallBack;
 import com.example.snakchatai.utils.SuccessCallBack;
+import com.example.snakchatai.utils.FirebaseUtil;
 import com.example.snakchatai.webrtc.MyPeerConnectionObserver;
 import com.example.snakchatai.webrtc.WebRTCClient;
+import com.google.firebase.Timestamp;
 import com.google.gson.Gson;
 
 import org.webrtc.IceCandidate;
@@ -119,12 +122,20 @@ public class MainRepository implements WebRTCClient.Listener {
                 new DataModel(target, currentUsername, null, DataModelType.StartCall),
                 errorCallBack
         );
+
+        // Log the outgoing call
+        FirebaseUtil.getCallLogCollectionReference(currentUsername)
+                .add(new CallLogModel(target, "", Timestamp.now(), true));
     }
 
     public void startCall(String target) {
         if (webRTCClient == null || target == null || target.isEmpty()) return;
         this.target = target;
         webRTCClient.call(target);
+
+        // Log the incoming call
+        FirebaseUtil.getCallLogCollectionReference(currentUsername)
+                .add(new CallLogModel(target, "", Timestamp.now(), false));
     }
 
     public void endCall() {
