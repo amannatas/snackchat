@@ -13,6 +13,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 
+import com.example.snakchatai.utils.FirebaseUtil;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.FirebaseException;
@@ -22,6 +23,7 @@ import com.google.firebase.auth.PhoneAuthCredential;
 import com.google.firebase.auth.PhoneAuthOptions;
 import com.google.firebase.auth.PhoneAuthProvider;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -130,6 +132,9 @@ public class LoginOtpActivity extends AppCompatActivity {
                             SharedPreferences.Editor editor = prefs.edit();
                             editor.putBoolean("isLoggedIn", true);
                             editor.apply();
+
+                            getFCMTokenAndSave();
+
                             // Firestore instance
                             FirebaseFirestore db = FirebaseFirestore.getInstance();
 
@@ -163,6 +168,17 @@ public class LoginOtpActivity extends AppCompatActivity {
                         }
                     }
                 });
+    }
+
+    void getFCMTokenAndSave(){
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if(task.isSuccessful()){
+                String token = task.getResult();
+                if(token!=null){
+                    FirebaseUtil.currentUserDetails().update("fcmToken",token);
+                }
+            }
+        });
     }
 
     private void setInProgress(boolean inProgress) {

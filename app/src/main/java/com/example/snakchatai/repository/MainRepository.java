@@ -1,6 +1,7 @@
 package com.example.snakchatai.repository;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.example.snakchatai.model.CallLogModel;
 import com.example.snakchatai.remote.FirebaseClient;
@@ -15,11 +16,22 @@ import com.example.snakchatai.webrtc.WebRTCClient;
 import com.google.firebase.Timestamp;
 import com.google.gson.Gson;
 
+import org.json.JSONObject;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceViewRenderer;
+
+import java.io.IOException;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class MainRepository implements WebRTCClient.Listener {
 
@@ -117,6 +129,9 @@ public class MainRepository implements WebRTCClient.Listener {
     // 🔹 Call flow
     public void sendCallRequest(String target, ErrorCallBack errorCallBack) {
         if (firebaseClient == null || currentUsername == null) return;
+        
+        // Send notification via Render server
+        sendNotificationToServer(target, currentUsername);
 
         firebaseClient.sendMessageToOtherUser(
                 new DataModel(target, currentUsername, null, DataModelType.StartCall),
@@ -126,6 +141,41 @@ public class MainRepository implements WebRTCClient.Listener {
         // Log the outgoing call
         FirebaseUtil.getCallLogCollectionReference(currentUsername)
                 .add(new CallLogModel(target, "", Timestamp.now(), true));
+    }
+    
+    private void sendNotificationToServer(String targetUserId, String callerId) {
+        try {
+            String url = "https://notification-server-18zv.onrender.com/send-call-notification";
+
+            OkHttpClient client = new OkHttpClient();
+            JSONObject jsonBody = new JSONObject();
+            jsonBody.put("targetUserId", targetUserId);
+            jsonBody.put("callerId", callerId);
+
+            RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.get("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Log.e("MainRepository", "Failed to send notification", e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (!response.isSuccessful()) {
+                        Log.e("MainRepository", "Failed to send notification: " + response.body().string());
+                    } else {
+                        Log.d("MainRepository", "Notification sent successfully");
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("MainRepository", "Exception in sendNotificationToServer", e);
+        }
     }
 
     public void startCall(String target) {

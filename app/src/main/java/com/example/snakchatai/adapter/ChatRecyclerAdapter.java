@@ -74,27 +74,28 @@ public class ChatRecyclerAdapter extends FirestoreRecyclerAdapter<ChatMessageMod
         holder.itemView.setOnLongClickListener(v -> {
             if (!isSelectionMode) {
                 isSelectionMode = true;
-                toggleSelection(position, holder.itemView);
-                selectionListener.onSelectionModeChanged(true, selectedPositions.size());
+                toggleSelection(holder.getAdapterPosition());
             }
             return true;
         });
 
         holder.itemView.setOnClickListener(v -> {
             if (isSelectionMode) {
-                toggleSelection(position, holder.itemView);
+                toggleSelection(holder.getAdapterPosition());
             }
         });
     }
 
-    private void toggleSelection(int position, View view) {
+    private void toggleSelection(int position) {
+        if (position == RecyclerView.NO_POSITION) {
+            return;
+        }
         if (selectedPositions.contains(position)) {
             selectedPositions.remove(Integer.valueOf(position));
-            view.setSelected(false);
         } else {
             selectedPositions.add(position);
-            view.setSelected(true);
         }
+        notifyItemChanged(position);
 
         if (selectedPositions.isEmpty()) {
             isSelectionMode = false;
@@ -103,15 +104,26 @@ public class ChatRecyclerAdapter extends FirestoreRecyclerAdapter<ChatMessageMod
     }
 
     public void clearSelection() {
+        if (!isSelectionMode) {
+            return;
+        }
         isSelectionMode = false;
+        List<Integer> positionsToUpdate = new ArrayList<>(selectedPositions);
         selectedPositions.clear();
-        notifyDataSetChanged();
+        for (int position : positionsToUpdate) {
+            if (position < getItemCount()) {
+                notifyItemChanged(position);
+            }
+        }
+        selectionListener.onSelectionModeChanged(false, 0);
     }
 
     public List<DocumentSnapshot> getSelectedItems() {
         List<DocumentSnapshot> selectedItems = new ArrayList<>();
         for (int position : selectedPositions) {
-            selectedItems.add(getSnapshots().getSnapshot(position));
+            if (position < getItemCount()) {
+                selectedItems.add(getSnapshots().getSnapshot(position));
+            }
         }
         return selectedItems;
     }

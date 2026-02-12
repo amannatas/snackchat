@@ -5,11 +5,10 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.ActionMode;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -19,7 +18,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.fragment.app.FragmentTransaction;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -33,8 +31,19 @@ import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.Query;
 
+import org.json.JSONObject;
+
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.UUID;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class chat_screen extends AppCompatActivity
         implements ChatRecyclerAdapter.SelectionListener {
@@ -129,15 +138,9 @@ public class chat_screen extends AppCompatActivity
         );
 
         videoCallBtn.setOnClickListener(v -> {
-            call_fragment callFragment = new call_fragment();
-            Bundle args = new Bundle();
-            args.putString("targetUserId", otherUser.getUserId());
-            callFragment.setArguments(args);
-
-            FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
-            transaction.replace(android.R.id.content, callFragment);
-            transaction.addToBackStack(null);
-            transaction.commit();
+            Intent intent = new Intent(this, CallActivity.class);
+            intent.putExtra("targetUserId", otherUser.getUserId());
+            startActivity(intent);
         });
     }
 
@@ -203,8 +206,46 @@ public class chat_screen extends AppCompatActivity
                         Timestamp.now(),
                         type
                 ));
+        
+        sendChatNotification(msg);
 
         messageInput.setText("");
+    }
+    
+    void sendChatNotification(String message){
+        try {
+            String url = "https://notification-server-18zv.onrender.com/send-chat-notification";
+
+            OkHttpClient client = new OkHttpClient();
+            JSONObject jsonBody = new JSONObject();
+            jsonBody.put("targetUserId", otherUser.getUserId());
+            jsonBody.put("senderId", FirebaseUtil.currentUserId());
+            jsonBody.put("message", message);
+
+            RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.get("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Log.e("CHAT_SCREEN", "Failed to send chat notification", e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (!response.isSuccessful()) {
+                        Log.e("CHAT_SCREEN", "Failed to send chat notification: " + response.body().string());
+                    } else {
+                        Log.d("CHAT_SCREEN", "Chat notification sent successfully");
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("CHAT_SCREEN", "Exception in sendChatNotification", e);
+        }
     }
 
     private void sendImage(Uri uri) {
@@ -245,11 +286,13 @@ public class chat_screen extends AppCompatActivity
         if (active) {
             if (actionMode == null) {
                 actionMode = startActionMode(new ActionMode.Callback() {
+                    @Override
                     public boolean onCreateActionMode(ActionMode mode, Menu menu) {
                         getMenuInflater().inflate(R.menu.delete_chat_menu, menu);
                         return true;
                     }
 
+                    @Override
                     public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
                         if (item.getItemId() == R.id.delete_chat) {
                             for (DocumentSnapshot s : adapter.getSelectedItems())
@@ -260,11 +303,13 @@ public class chat_screen extends AppCompatActivity
                         return false;
                     }
 
+                    @Override
                     public void onDestroyActionMode(ActionMode mode) {
                         actionMode = null;
                         adapter.clearSelection();
                     }
 
+                    @Override
                     public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
                         return false;
                     }
