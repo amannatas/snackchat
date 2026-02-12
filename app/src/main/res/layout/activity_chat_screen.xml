@@ -52,7 +52,7 @@
 
             android:layout_alignParentEnd="true"
             android:id="@+id/video_call_btn"
-            android:src="@drawable/ic_accept"
+            android:src="@drawable/ic_baseline_videocam_24"
 
             android:background="@android:color/transparent"/>
 

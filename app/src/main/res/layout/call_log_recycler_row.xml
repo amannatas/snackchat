@@ -8,7 +8,7 @@
         android:id="@+id/profile_pic_image_view"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:src="@drawable/ic_profile"
+        android:src="@drawable/pic"
         android:layout_centerVertical="true"/>
 
     <TextView

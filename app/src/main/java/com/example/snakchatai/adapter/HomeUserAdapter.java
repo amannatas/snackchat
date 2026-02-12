@@ -43,7 +43,7 @@ public class HomeUserAdapter
                 .addOnSuccessListener(uri ->
                         AndroidUtil.setProfilePic(context, uri, holder.profilePic)
                 ).addOnFailureListener(e -> {
-                    holder.profilePic.setImageResource(R.drawable.ic_profile);
+                    holder.profilePic.setImageResource(R.drawable.baseline_person_24);
                 });
 
         holder.itemView.setOnClickListener(v -> {

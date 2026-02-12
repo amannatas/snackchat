@@ -20,48 +20,68 @@ import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.google.firebase.firestore.DocumentSnapshot;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-public class ChatRecyclerAdapter extends FirestoreRecyclerAdapter<ChatMessageModel, ChatRecyclerAdapter.ChatModelViewHolder> {
+public class ChatRecyclerAdapter
+        extends FirestoreRecyclerAdapter<ChatMessageModel, ChatRecyclerAdapter.ChatModelViewHolder> {
 
     private final Context context;
-    private boolean isSelectionMode = false;
-    private final List<Integer> selectedPositions = new ArrayList<>();
     private final SelectionListener selectionListener;
 
+    // 🔥 stable selection (documentId based)
+    private final Set<String> selectedIds = new HashSet<>();
+    private boolean isSelectionMode = false;
+
     public interface SelectionListener {
-        void onSelectionModeChanged(boolean isSelectionMode, int selectedItems);
+        void onSelectionModeChanged(boolean active, int count);
     }
 
-    public ChatRecyclerAdapter(@NonNull FirestoreRecyclerOptions<ChatMessageModel> options, Context context, SelectionListener selectionListener) {
+    public ChatRecyclerAdapter(
+            @NonNull FirestoreRecyclerOptions<ChatMessageModel> options,
+            Context context,
+            SelectionListener selectionListener
+    ) {
         super(options);
         this.context = context;
         this.selectionListener = selectionListener;
+        setHasStableIds(true);
     }
 
     @Override
-    protected void onBindViewHolder(@NonNull ChatModelViewHolder holder, int position, @NonNull ChatMessageModel model) {
-        if (model.getSenderId().equals(FirebaseUtil.currentUserId())) {
-            holder.leftChatLayout.setVisibility(View.GONE);
-            holder.rightChatLayout.setVisibility(View.VISIBLE);
+    public long getItemId(int position) {
+        return getSnapshots().getSnapshot(position).getId().hashCode();
+    }
 
-            if (model.getMessageType() != null && model.getMessageType().equals("IMAGE")) {
+    @Override
+    protected void onBindViewHolder(
+            @NonNull ChatModelViewHolder holder,
+            int position,
+            @NonNull ChatMessageModel model
+    ) {
+
+        // ---------- MESSAGE UI ----------
+        boolean isMe = model.getSenderId().equals(FirebaseUtil.currentUserId());
+
+        holder.leftChatLayout.setVisibility(isMe ? View.GONE : View.VISIBLE);
+        holder.rightChatLayout.setVisibility(isMe ? View.VISIBLE : View.GONE);
+
+        if ("IMAGE".equals(model.getMessageType())) {
+            if (isMe) {
                 holder.rightChatImageView.setVisibility(View.VISIBLE);
                 holder.rightChatTextview.setVisibility(View.GONE);
                 Glide.with(context).load(model.getMessage()).into(holder.rightChatImageView);
             } else {
-                holder.rightChatImageView.setVisibility(View.GONE);
-                holder.rightChatTextview.setVisibility(View.VISIBLE);
-                holder.rightChatTextview.setText(model.getMessage());
-            }
-        } else {
-            holder.rightChatLayout.setVisibility(View.GONE);
-            holder.leftChatLayout.setVisibility(View.VISIBLE);
-
-            if (model.getMessageType() != null && model.getMessageType().equals("IMAGE")) {
                 holder.leftChatImageView.setVisibility(View.VISIBLE);
                 holder.leftChatTextview.setVisibility(View.GONE);
                 Glide.with(context).load(model.getMessage()).into(holder.leftChatImageView);
+            }
+        } else {
+            if (isMe) {
+                holder.rightChatImageView.setVisibility(View.GONE);
+                holder.rightChatTextview.setVisibility(View.VISIBLE);
+                holder.rightChatTextview.setText(model.getMessage());
             } else {
                 holder.leftChatImageView.setVisibility(View.GONE);
                 holder.leftChatTextview.setVisibility(View.VISIBLE);
@@ -69,69 +89,69 @@ public class ChatRecyclerAdapter extends FirestoreRecyclerAdapter<ChatMessageMod
             }
         }
 
-        holder.itemView.setSelected(selectedPositions.contains(position));
+        // ---------- SELECTION STATE (🔥 CRITICAL LINE) ----------
+        String docId = getSnapshots().getSnapshot(position).getId();
+        holder.itemView.setActivated(selectedIds.contains(docId));
 
+        // ---------- LONG CLICK ----------
         holder.itemView.setOnLongClickListener(v -> {
-            if (!isSelectionMode) {
-                isSelectionMode = true;
-                toggleSelection(holder.getAdapterPosition());
-            }
+            toggleSelection(holder.getBindingAdapterPosition());
             return true;
         });
 
+        // ---------- NORMAL CLICK ----------
         holder.itemView.setOnClickListener(v -> {
-            if (isSelectionMode) {
-                toggleSelection(holder.getAdapterPosition());
-            }
+            if (!isSelectionMode) return;
+            toggleSelection(holder.getBindingAdapterPosition());
         });
     }
 
+    // ---------- SELECTION CORE ----------
     private void toggleSelection(int position) {
-        if (position == RecyclerView.NO_POSITION) {
-            return;
-        }
-        if (selectedPositions.contains(position)) {
-            selectedPositions.remove(Integer.valueOf(position));
-        } else {
-            selectedPositions.add(position);
-        }
-        notifyItemChanged(position);
+        if (position == RecyclerView.NO_POSITION) return;
 
-        if (selectedPositions.isEmpty()) {
-            isSelectionMode = false;
+        String docId = getSnapshots().getSnapshot(position).getId();
+
+        if (selectedIds.contains(docId)) {
+            selectedIds.remove(docId);
+        } else {
+            selectedIds.add(docId);
         }
-        selectionListener.onSelectionModeChanged(isSelectionMode, selectedPositions.size());
+
+        isSelectionMode = !selectedIds.isEmpty();
+        notifyItemChanged(position);
+        selectionListener.onSelectionModeChanged(isSelectionMode, selectedIds.size());
     }
 
     public void clearSelection() {
-        if (!isSelectionMode) {
-            return;
-        }
+        if (selectedIds.isEmpty()) return;
+
+        selectedIds.clear();
         isSelectionMode = false;
-        List<Integer> positionsToUpdate = new ArrayList<>(selectedPositions);
-        selectedPositions.clear();
-        for (int position : positionsToUpdate) {
-            if (position < getItemCount()) {
-                notifyItemChanged(position);
-            }
-        }
+        notifyDataSetChanged();
         selectionListener.onSelectionModeChanged(false, 0);
     }
 
     public List<DocumentSnapshot> getSelectedItems() {
-        List<DocumentSnapshot> selectedItems = new ArrayList<>();
-        for (int position : selectedPositions) {
-            if (position < getItemCount()) {
-                selectedItems.add(getSnapshots().getSnapshot(position));
+        List<DocumentSnapshot> list = new ArrayList<>();
+        for (int i = 0; i < getItemCount(); i++) {
+            DocumentSnapshot s = getSnapshots().getSnapshot(i);
+            if (selectedIds.contains(s.getId())) {
+                list.add(s);
             }
         }
-        return selectedItems;
+        return list;
     }
 
+    // ---------- VIEW HOLDER ----------
     @NonNull
     @Override
-    public ChatModelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(context).inflate(R.layout.chat_message_recycler_row, parent, false);
+    public ChatModelViewHolder onCreateViewHolder(
+            @NonNull ViewGroup parent,
+            int viewType
+    ) {
+        View view = LayoutInflater.from(context)
+                .inflate(R.layout.chat_message_recycler_row, parent, false);
         return new ChatModelViewHolder(view);
     }
 
@@ -141,9 +161,8 @@ public class ChatRecyclerAdapter extends FirestoreRecyclerAdapter<ChatMessageMod
         TextView leftChatTextview, rightChatTextview;
         ImageView leftChatImageView, rightChatImageView;
 
-        public ChatModelViewHolder(@NonNull View itemView) {
+        ChatModelViewHolder(@NonNull View itemView) {
             super(itemView);
-
             leftChatLayout = itemView.findViewById(R.id.left_chat_layout);
             rightChatLayout = itemView.findViewById(R.id.right_chat_layout);
             leftChatTextview = itemView.findViewById(R.id.left_chat_textview);

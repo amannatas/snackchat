@@ -3,6 +3,7 @@ package com.example.snakchatai.utils;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
@@ -14,6 +15,10 @@ import java.text.SimpleDateFormat;
 import java.util.List;
 
 public class FirebaseUtil {
+
+    public static FirebaseDatabase database = FirebaseDatabase.getInstance(
+            "https://snakchat-ai-default-rtdb.asia-southeast1.firebasedatabase.app"
+    );
 
     public static String currentUserId(){
         return FirebaseAuth.getInstance().getUid();

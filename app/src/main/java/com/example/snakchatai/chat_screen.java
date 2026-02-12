@@ -45,47 +45,38 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-public class chat_screen extends AppCompatActivity
-        implements ChatRecyclerAdapter.SelectionListener {
+public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapter.SelectionListener {
 
-    UserModel otherUser;
-    String chatroomId;
-    ChatroomModel chatroomModel;
+    private UserModel otherUser;
+    private String chatroomId;
+    private ChatroomModel chatroomModel;
 
-    ChatRecyclerAdapter adapter;
+    private ChatRecyclerAdapter adapter;
 
-    EditText messageInput;
-    ImageButton sendMessageBtn, backBtn, videoCallBtn, attachFileBtn;
-    TextView otherUsername;
-    RecyclerView recyclerView;
-    ImageView imageView;
+    private EditText messageInput;
+    private ImageButton sendMessageBtn, backBtn, videoCallBtn, attachFileBtn;
+    private TextView otherUsername;
+    private RecyclerView recyclerView;
+    private ImageView imageView;
 
-    ActivityResultLauncher<Intent> imagePickerLauncher;
-    ActionMode actionMode;
+    private ActivityResultLauncher<Intent> imagePickerLauncher;
+    private ActionMode actionMode;
 
-    boolean isLoadingMore = false;
-    long messageLimit = 30;
+    private boolean isLoadingMore = false;
+    private long messageLimit = 30;
+
+    private final OkHttpClient httpClient = new OkHttpClient();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat_screen);
 
-        imagePickerLauncher =
-                registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
-                        result -> {
-                            if (result.getResultCode() == Activity.RESULT_OK &&
-                                    result.getData() != null &&
-                                    result.getData().getData() != null) {
-                                sendImage(result.getData().getData());
-                            }
-                        });
+        initImagePicker();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            otherUser = getIntent().getParcelableExtra("user", UserModel.class);
-        } else {
-            otherUser = getIntent().getParcelableExtra("user");
-        }
+        otherUser = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ?
+                getIntent().getParcelableExtra("user", UserModel.class) :
+                getIntent().getParcelableExtra("user");
 
         if (otherUser == null) {
             finish();
@@ -106,6 +97,18 @@ public class chat_screen extends AppCompatActivity
         setupRecycler();
     }
 
+    private void initImagePicker() {
+        imagePickerLauncher =
+                registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                        result -> {
+                            if (result.getResultCode() == Activity.RESULT_OK &&
+                                    result.getData() != null &&
+                                    result.getData().getData() != null) {
+                                sendImage(result.getData().getData());
+                            }
+                        });
+    }
+
     private void bindViews() {
         messageInput = findViewById(R.id.chat_message_input);
         sendMessageBtn = findViewById(R.id.message_send_btn);
@@ -118,7 +121,6 @@ public class chat_screen extends AppCompatActivity
     }
 
     private void setupClicks() {
-
         backBtn.setOnClickListener(v -> finish());
 
         sendMessageBtn.setOnClickListener(v -> {
@@ -161,14 +163,11 @@ public class chat_screen extends AppCompatActivity
 
         recyclerView.setLayoutManager(lm);
         recyclerView.setAdapter(adapter);
-        adapter.startListening();
 
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                if (!rv.canScrollVertically(-1) && !isLoadingMore) {
-                    loadMoreMessages();
-                }
+                if (!rv.canScrollVertically(-1) && !isLoadingMore) loadMoreMessages();
             }
         });
     }
@@ -200,51 +199,41 @@ public class chat_screen extends AppCompatActivity
         FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
 
         FirebaseUtil.getChatroomMessageReference(chatroomId)
-                .add(new ChatMessageModel(
-                        msg,
-                        FirebaseUtil.currentUserId(),
-                        Timestamp.now(),
-                        type
-                ));
-        
-        sendChatNotification(msg);
+                .add(new ChatMessageModel(msg, FirebaseUtil.currentUserId(), Timestamp.now(), type));
 
+        recyclerView.post(() -> recyclerView.scrollToPosition(0));
+        sendChatNotification(msg);
         messageInput.setText("");
     }
-    
-    void sendChatNotification(String message){
+
+    private void sendChatNotification(String message) {
         try {
             String url = "https://notification-server-18zv.onrender.com/send-chat-notification";
 
-            OkHttpClient client = new OkHttpClient();
             JSONObject jsonBody = new JSONObject();
             jsonBody.put("targetUserId", otherUser.getUserId());
             jsonBody.put("senderId", FirebaseUtil.currentUserId());
             jsonBody.put("message", message);
 
-            RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.get("application/json; charset=utf-8"));
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(body)
-                    .build();
+            RequestBody body = RequestBody.create(jsonBody.toString(),
+                    MediaType.get("application/json; charset=utf-8"));
 
-            client.newCall(request).enqueue(new Callback() {
+            Request request = new Request.Builder().url(url).post(body).build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    Log.e("CHAT_SCREEN", "Failed to send chat notification", e);
+                    Log.e("ChatScreen", "Notification failed", e);
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
-                    if (!response.isSuccessful()) {
-                        Log.e("CHAT_SCREEN", "Failed to send chat notification: " + response.body().string());
-                    } else {
-                        Log.d("CHAT_SCREEN", "Chat notification sent successfully");
-                    }
+                    if (!response.isSuccessful()) Log.e("ChatScreen", "Notification failed: " + response.body().string());
                 }
             });
+
         } catch (Exception e) {
-            Log.e("CHAT_SCREEN", "Exception in sendChatNotification", e);
+            Log.e("ChatScreen", "Notification exception", e);
         }
     }
 
@@ -253,11 +242,8 @@ public class chat_screen extends AppCompatActivity
         FirebaseUtil.getChatroomImageStorageRef(chatroomId)
                 .child(name)
                 .putFile(uri)
-                .addOnSuccessListener(t ->
-                        t.getStorage().getDownloadUrl()
-                                .addOnSuccessListener(u ->
-                                        sendMessage(u.toString(), "IMAGE")
-                                ));
+                .addOnSuccessListener(t -> t.getStorage().getDownloadUrl()
+                        .addOnSuccessListener(u -> sendMessage(u.toString(), "IMAGE")));
     }
 
     private void getOrCreateChatroom() {
@@ -266,17 +252,10 @@ public class chat_screen extends AppCompatActivity
                 .addOnSuccessListener(doc -> {
                     chatroomModel = doc.toObject(ChatroomModel.class);
                     if (chatroomModel == null) {
-                        chatroomModel = new ChatroomModel(
-                                chatroomId,
-                                Arrays.asList(
-                                        FirebaseUtil.currentUserId(),
-                                        otherUser.getUserId()
-                                ),
-                                Timestamp.now(),
-                                ""
-                        );
-                        FirebaseUtil.getChatroomReference(chatroomId)
-                                .set(chatroomModel);
+                        chatroomModel = new ChatroomModel(chatroomId,
+                                Arrays.asList(FirebaseUtil.currentUserId(), otherUser.getUserId()),
+                                Timestamp.now(), "");
+                        FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
                     }
                 });
     }
@@ -295,8 +274,7 @@ public class chat_screen extends AppCompatActivity
                     @Override
                     public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
                         if (item.getItemId() == R.id.delete_chat) {
-                            for (DocumentSnapshot s : adapter.getSelectedItems())
-                                s.getReference().delete();
+                            for (DocumentSnapshot s : adapter.getSelectedItems()) s.getReference().delete();
                             mode.finish();
                             return true;
                         }
@@ -316,15 +294,24 @@ public class chat_screen extends AppCompatActivity
                 });
             }
             actionMode.setTitle(String.valueOf(count));
-        } else if (actionMode != null) {
-            actionMode.finish();
-        }
+        } else if (actionMode != null) actionMode.finish();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (adapter != null) adapter.startListening();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (adapter != null) adapter.stopListening();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (adapter != null) adapter.stopListening();
         if (actionMode != null) actionMode.finish();
     }
 }
