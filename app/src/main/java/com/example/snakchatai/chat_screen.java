@@ -11,7 +11,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -33,13 +32,13 @@ import com.google.firebase.firestore.Query;
 
 import org.json.JSONObject;
 
-import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
-import java.util.UUID;
 
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -57,7 +56,6 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     private ImageButton sendMessageBtn, backBtn, videoCallBtn, attachFileBtn;
     private TextView otherUsername;
     private RecyclerView recyclerView;
-    private ImageView imageView;
 
     private ActivityResultLauncher<Intent> imagePickerLauncher;
     private ActionMode actionMode;
@@ -67,6 +65,9 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
 
     private final OkHttpClient httpClient = new OkHttpClient();
 
+    private final String CLOUD_NAME = "dbolenrtr";
+    private final String UPLOAD_PRESET = "chat_images";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -74,9 +75,9 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
 
         initImagePicker();
 
-        otherUser = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ?
-                getIntent().getParcelableExtra("user", UserModel.class) :
-                getIntent().getParcelableExtra("user");
+        otherUser = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                ? getIntent().getParcelableExtra("user", UserModel.class)
+                : getIntent().getParcelableExtra("user");
 
         if (otherUser == null) {
             finish();
@@ -104,7 +105,7 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                             if (result.getResultCode() == Activity.RESULT_OK &&
                                     result.getData() != null &&
                                     result.getData().getData() != null) {
-                                sendImage(result.getData().getData());
+                                uploadImageToCloudinary(result.getData().getData());
                             }
                         });
     }
@@ -117,7 +118,6 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
         attachFileBtn = findViewById(R.id.attach_file_btn);
         otherUsername = findViewById(R.id.other_username);
         recyclerView = findViewById(R.id.chat_recycler_view);
-        imageView = findViewById(R.id.profile_pic_image_view);
     }
 
     private void setupClicks() {
@@ -147,6 +147,11 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     }
 
     private void setupRecycler() {
+        LinearLayoutManager lm = new LinearLayoutManager(this);
+        lm.setReverseLayout(true);
+        lm.setStackFromEnd(true);
+        recyclerView.setLayoutManager(lm);
+
         Query query = FirebaseUtil.getChatroomMessageReference(chatroomId)
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .limit(messageLimit);
@@ -157,17 +162,23 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                         .build();
 
         adapter = new ChatRecyclerAdapter(options, this, this);
-
-        LinearLayoutManager lm = new LinearLayoutManager(this);
-        lm.setReverseLayout(true);
-
-        recyclerView.setLayoutManager(lm);
         recyclerView.setAdapter(adapter);
+
+        adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                if (positionStart == 0 && itemCount == 1 && !isLoadingMore) {
+                    recyclerView.scrollToPosition(0);
+                }
+            }
+        });
 
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                if (!rv.canScrollVertically(-1) && !isLoadingMore) loadMoreMessages();
+                if (!rv.canScrollVertically(-1) && !isLoadingMore) {
+                    loadMoreMessages();
+                }
             }
         });
     }
@@ -186,6 +197,7 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                         .build();
 
         adapter.updateOptions(options);
+
         recyclerView.postDelayed(() -> isLoadingMore = false, 1000);
     }
 
@@ -199,11 +211,15 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
         FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
 
         FirebaseUtil.getChatroomMessageReference(chatroomId)
-                .add(new ChatMessageModel(msg, FirebaseUtil.currentUserId(), Timestamp.now(), type));
+                .add(new ChatMessageModel(msg,
+                        FirebaseUtil.currentUserId(),
+                        Timestamp.now(),
+                        type))
+                .addOnSuccessListener(documentReference -> {
+                    if (type.equals("TEXT")) messageInput.setText("");
+                });
 
-        recyclerView.post(() -> recyclerView.scrollToPosition(0));
         sendChatNotification(msg);
-        messageInput.setText("");
     }
 
     private void sendChatNotification(String message) {
@@ -215,20 +231,27 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
             jsonBody.put("senderId", FirebaseUtil.currentUserId());
             jsonBody.put("message", message);
 
-            RequestBody body = RequestBody.create(jsonBody.toString(),
-                    MediaType.get("application/json; charset=utf-8"));
+            RequestBody body = RequestBody.create(
+                    jsonBody.toString(),
+                    MediaType.get("application/json; charset=utf-8")
+            );
 
-            Request request = new Request.Builder().url(url).post(body).build();
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(body)
+                    .build();
 
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) {
+                public void onFailure(Call call, java.io.IOException e) {
                     Log.e("ChatScreen", "Notification failed", e);
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    if (!response.isSuccessful()) Log.e("ChatScreen", "Notification failed: " + response.body().string());
+                public void onResponse(Call call, Response response) throws java.io.IOException {
+                    if (!response.isSuccessful()) {
+                        Log.e("ChatScreen", "Notification failed");
+                    }
                 }
             });
 
@@ -237,13 +260,57 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
         }
     }
 
-    private void sendImage(Uri uri) {
-        String name = UUID.randomUUID().toString();
-        FirebaseUtil.getChatroomImageStorageRef(chatroomId)
-                .child(name)
-                .putFile(uri)
-                .addOnSuccessListener(t -> t.getStorage().getDownloadUrl()
-                        .addOnSuccessListener(u -> sendMessage(u.toString(), "IMAGE")));
+    private void uploadImageToCloudinary(Uri uri) {
+        try {
+            InputStream inputStream = getContentResolver().openInputStream(uri);
+            byte[] bytes = new byte[inputStream.available()];
+            inputStream.read(bytes);
+            inputStream.close();
+
+            RequestBody fileBody = RequestBody.create(
+                    bytes,
+                    MediaType.parse("image/*")
+            );
+
+            MultipartBody requestBody = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", "chat_image.jpg", fileBody)
+                    .addFormDataPart("upload_preset", UPLOAD_PRESET)
+                    .build();
+
+            Request request = new Request.Builder()
+                    .url("https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/image/upload")
+                    .post(requestBody)
+                    .build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, java.io.IOException e) {
+                    Log.e("Cloudinary", "Upload failed", e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws java.io.IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            String json = response.body().string();
+                            JSONObject obj = new JSONObject(json);
+                            final String imageUrl = obj.getString("secure_url");
+
+                            runOnUiThread(() ->
+                                    sendMessage(imageUrl, "IMAGE")
+                            );
+
+                        } catch (Exception e) {
+                            Log.e("Cloudinary", "JSON parse error", e);
+                        }
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e("Cloudinary", "Upload exception", e);
+        }
     }
 
     private void getOrCreateChatroom() {
@@ -252,10 +319,16 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                 .addOnSuccessListener(doc -> {
                     chatroomModel = doc.toObject(ChatroomModel.class);
                     if (chatroomModel == null) {
-                        chatroomModel = new ChatroomModel(chatroomId,
-                                Arrays.asList(FirebaseUtil.currentUserId(), otherUser.getUserId()),
-                                Timestamp.now(), "");
-                        FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
+                        chatroomModel = new ChatroomModel(
+                                chatroomId,
+                                Arrays.asList(
+                                        FirebaseUtil.currentUserId(),
+                                        otherUser.getUserId()),
+                                Timestamp.now(),
+                                ""
+                        );
+                        FirebaseUtil.getChatroomReference(chatroomId)
+                                .set(chatroomModel);
                     }
                 });
     }
@@ -274,7 +347,9 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                     @Override
                     public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
                         if (item.getItemId() == R.id.delete_chat) {
-                            for (DocumentSnapshot s : adapter.getSelectedItems()) s.getReference().delete();
+                            for (DocumentSnapshot s : adapter.getSelectedItems()) {
+                                s.getReference().delete();
+                            }
                             mode.finish();
                             return true;
                         }
@@ -294,7 +369,9 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                 });
             }
             actionMode.setTitle(String.valueOf(count));
-        } else if (actionMode != null) actionMode.finish();
+        } else if (actionMode != null) {
+            actionMode.finish();
+        }
     }
 
     @Override

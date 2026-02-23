@@ -29,8 +29,6 @@ public class ChatRecyclerAdapter
 
     private final Context context;
     private final SelectionListener selectionListener;
-
-    // 🔥 stable selection (documentId based)
     private final Set<String> selectedIds = new HashSet<>();
     private boolean isSelectionMode = false;
 
@@ -51,7 +49,15 @@ public class ChatRecyclerAdapter
 
     @Override
     public long getItemId(int position) {
-        return getSnapshots().getSnapshot(position).getId().hashCode();
+        try {
+            if (position >= 0 && position < getSnapshots().size()) {
+                DocumentSnapshot snapshot = getSnapshots().getSnapshot(position);
+                return snapshot.getId().hashCode();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return RecyclerView.NO_ID;
     }
 
     @Override
@@ -60,90 +66,154 @@ public class ChatRecyclerAdapter
             int position,
             @NonNull ChatMessageModel model
     ) {
-
-        // ---------- MESSAGE UI ----------
-        boolean isMe = model.getSenderId().equals(FirebaseUtil.currentUserId());
-
-        holder.leftChatLayout.setVisibility(isMe ? View.GONE : View.VISIBLE);
-        holder.rightChatLayout.setVisibility(isMe ? View.VISIBLE : View.GONE);
-
-        if ("IMAGE".equals(model.getMessageType())) {
-            if (isMe) {
-                holder.rightChatImageView.setVisibility(View.VISIBLE);
-                holder.rightChatTextview.setVisibility(View.GONE);
-                Glide.with(context).load(model.getMessage()).into(holder.rightChatImageView);
-            } else {
-                holder.leftChatImageView.setVisibility(View.VISIBLE);
-                holder.leftChatTextview.setVisibility(View.GONE);
-                Glide.with(context).load(model.getMessage()).into(holder.leftChatImageView);
+        try {
+            // Safe position check
+            int safePosition = holder.getBindingAdapterPosition();
+            if (safePosition == RecyclerView.NO_POSITION) {
+                return;
             }
-        } else {
-            if (isMe) {
-                holder.rightChatImageView.setVisibility(View.GONE);
-                holder.rightChatTextview.setVisibility(View.VISIBLE);
-                holder.rightChatTextview.setText(model.getMessage());
-            } else {
-                holder.leftChatImageView.setVisibility(View.GONE);
-                holder.leftChatTextview.setVisibility(View.VISIBLE);
-                holder.leftChatTextview.setText(model.getMessage());
+
+            // Check bounds before accessing snapshots
+            if (safePosition >= getSnapshots().size()) {
+                return;
             }
+
+            boolean isMe = model.getSenderId() != null &&
+                    model.getSenderId().equals(FirebaseUtil.currentUserId());
+
+            holder.leftChatLayout.setVisibility(isMe ? View.GONE : View.VISIBLE);
+            holder.rightChatLayout.setVisibility(isMe ? View.VISIBLE : View.GONE);
+
+            holder.leftChatImageView.setVisibility(View.GONE);
+            holder.rightChatImageView.setVisibility(View.GONE);
+            holder.leftChatTextview.setVisibility(View.GONE);
+            holder.rightChatTextview.setVisibility(View.GONE);
+
+            // Handle message type
+            if ("IMAGE".equals(model.getMessageType())) {
+                if (isMe) {
+                    holder.rightChatImageView.setVisibility(View.VISIBLE);
+                    Glide.with(context)
+                            .load(model.getMessage())
+                            .into(holder.rightChatImageView);
+                } else {
+                    holder.leftChatImageView.setVisibility(View.VISIBLE);
+                    Glide.with(context)
+                            .load(model.getMessage())
+                            .into(holder.leftChatImageView);
+                }
+            } else {
+                if (isMe) {
+                    holder.rightChatTextview.setVisibility(View.VISIBLE);
+                    holder.rightChatTextview.setText(model.getMessage());
+                } else {
+                    holder.leftChatTextview.setVisibility(View.VISIBLE);
+                    holder.leftChatTextview.setText(model.getMessage());
+                }
+            }
+
+            // Get document ID safely
+            DocumentSnapshot snapshot = getSnapshots().getSnapshot(safePosition);
+            String docId = snapshot.getId();
+
+            // Update selection state
+            holder.itemView.setActivated(selectedIds.contains(docId));
+
+            // Long click for selection
+            holder.itemView.setOnLongClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
+                    toggleSelection(pos);
+                }
+                return true;
+            });
+
+            // Regular click for multi-select
+            holder.itemView.setOnClickListener(v -> {
+                if (!isSelectionMode) return;
+
+                int pos = holder.getBindingAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
+                    toggleSelection(pos);
+                }
+            });
+
+        } catch (IndexOutOfBoundsException e) {
+            // Handle position out of bounds gracefully
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        // ---------- SELECTION STATE (🔥 CRITICAL LINE) ----------
-        String docId = getSnapshots().getSnapshot(position).getId();
-        holder.itemView.setActivated(selectedIds.contains(docId));
-
-        // ---------- LONG CLICK ----------
-        holder.itemView.setOnLongClickListener(v -> {
-            toggleSelection(holder.getBindingAdapterPosition());
-            return true;
-        });
-
-        // ---------- NORMAL CLICK ----------
-        holder.itemView.setOnClickListener(v -> {
-            if (!isSelectionMode) return;
-            toggleSelection(holder.getBindingAdapterPosition());
-        });
     }
 
-    // ---------- SELECTION CORE ----------
     private void toggleSelection(int position) {
-        if (position == RecyclerView.NO_POSITION) return;
+        try {
+            if (position == RecyclerView.NO_POSITION || position >= getSnapshots().size()) {
+                return;
+            }
 
-        String docId = getSnapshots().getSnapshot(position).getId();
+            DocumentSnapshot snapshot = getSnapshots().getSnapshot(position);
+            String docId = snapshot.getId();
 
-        if (selectedIds.contains(docId)) {
-            selectedIds.remove(docId);
-        } else {
-            selectedIds.add(docId);
+            if (selectedIds.contains(docId)) {
+                selectedIds.remove(docId);
+            } else {
+                selectedIds.add(docId);
+            }
+
+            isSelectionMode = !selectedIds.isEmpty();
+            notifyItemChanged(position);
+
+            if (selectionListener != null) {
+                selectionListener.onSelectionModeChanged(isSelectionMode, selectedIds.size());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        isSelectionMode = !selectedIds.isEmpty();
-        notifyItemChanged(position);
-        selectionListener.onSelectionModeChanged(isSelectionMode, selectedIds.size());
     }
 
     public void clearSelection() {
         if (selectedIds.isEmpty()) return;
-
         selectedIds.clear();
         isSelectionMode = false;
         notifyDataSetChanged();
-        selectionListener.onSelectionModeChanged(false, 0);
+
+        if (selectionListener != null) {
+            selectionListener.onSelectionModeChanged(false, 0);
+        }
     }
 
     public List<DocumentSnapshot> getSelectedItems() {
         List<DocumentSnapshot> list = new ArrayList<>();
-        for (int i = 0; i < getItemCount(); i++) {
-            DocumentSnapshot s = getSnapshots().getSnapshot(i);
-            if (selectedIds.contains(s.getId())) {
-                list.add(s);
+
+        try {
+            for (int i = 0; i < getSnapshots().size(); i++) {
+                DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
+                if (selectedIds.contains(snapshot.getId())) {
+                    list.add(snapshot);
+                }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+
         return list;
     }
 
-    // ---------- VIEW HOLDER ----------
+    @Override
+    public void onDataChanged() {
+        super.onDataChanged();
+
+        if (!selectedIds.isEmpty()) {
+            selectedIds.clear();
+            isSelectionMode = false;
+
+            if (selectionListener != null) {
+                selectionListener.onSelectionModeChanged(false, 0);
+            }
+        }
+    }
+
     @NonNull
     @Override
     public ChatModelViewHolder onCreateViewHolder(
@@ -163,10 +233,13 @@ public class ChatRecyclerAdapter
 
         ChatModelViewHolder(@NonNull View itemView) {
             super(itemView);
+
             leftChatLayout = itemView.findViewById(R.id.left_chat_layout);
             rightChatLayout = itemView.findViewById(R.id.right_chat_layout);
+
             leftChatTextview = itemView.findViewById(R.id.left_chat_textview);
             rightChatTextview = itemView.findViewById(R.id.right_chat_textview);
+
             leftChatImageView = itemView.findViewById(R.id.left_chat_imageview);
             rightChatImageView = itemView.findViewById(R.id.right_chat_imageview);
         }

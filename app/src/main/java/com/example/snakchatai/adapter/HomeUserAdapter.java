@@ -10,6 +10,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.snakchatai.R;
 import com.example.snakchatai.chat_screen;
@@ -28,31 +29,75 @@ public class HomeUserAdapter
                            Context context) {
         super(options);
         this.context = context;
+        setHasStableIds(true);
+    }
+
+    @Override
+    public long getItemId(int position) {
+        try {
+            if (position >= 0 && position < getSnapshots().size()) {
+                return getSnapshots().getSnapshot(position).getId().hashCode();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return RecyclerView.NO_ID;
     }
 
     @Override
     protected void onBindViewHolder(@NonNull UserViewHolder holder,
                                     int position,
                                     @NonNull UserModel model) {
+        try {
+            // Safe position check
+            int safePosition = holder.getBindingAdapterPosition();
+            if (safePosition == RecyclerView.NO_POSITION) {
+                return;
+            }
 
-        holder.username.setText(model.getUsername());
-        holder.phone.setText(model.getPhone());
+            // Check bounds
+            if (safePosition >= getSnapshots().size()) {
+                return;
+            }
 
-        FirebaseUtil.getOtherProfilePicStorageRef(model.getUserId())
-                .getDownloadUrl()
-                .addOnSuccessListener(uri ->
-                        AndroidUtil.setProfilePic(context, uri, holder.profilePic)
-                ).addOnFailureListener(e -> {
-                    holder.profilePic.setImageResource(R.drawable.baseline_person_24);
-                });
+            holder.username.setText(model.getUsername());
+            holder.phone.setText(model.getPhone());
 
-        holder.itemView.setOnClickListener(v -> {
-            Intent intent = new Intent(context, chat_screen.class);
-            Bundle args = new Bundle();
-            args.putParcelable("user", model);
-            intent.putExtras(args);
-            context.startActivity(intent);
-        });
+            // Handle profile picture asynchronously
+            FirebaseUtil.getOtherProfilePicStorageRef(model.getUserId())
+                    .getDownloadUrl()
+                    .addOnSuccessListener(uri -> {
+                        // Double check position hasn't changed
+                        if (holder.getBindingAdapterPosition() == safePosition) {
+                            AndroidUtil.setProfilePic(context, uri, holder.profilePic);
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        // Double check position hasn't changed
+                        if (holder.getBindingAdapterPosition() == safePosition) {
+                            holder.profilePic.setImageResource(R.drawable.baseline_person_24);
+                        }
+                    });
+
+            // Click listener
+            holder.itemView.setOnClickListener(v -> {
+                int clickPosition = holder.getBindingAdapterPosition();
+                if (clickPosition != RecyclerView.NO_POSITION &&
+                        clickPosition < getSnapshots().size()) {
+
+                    Intent intent = new Intent(context, chat_screen.class);
+                    Bundle args = new Bundle();
+                    args.putParcelable("user", model);
+                    intent.putExtras(args);
+                    context.startActivity(intent);
+                }
+            });
+
+        } catch (IndexOutOfBoundsException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @NonNull
@@ -63,7 +108,7 @@ public class HomeUserAdapter
         return new UserViewHolder(view);
     }
 
-    static class UserViewHolder extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
+    static class UserViewHolder extends RecyclerView.ViewHolder {
         TextView username, phone;
         ImageView profilePic;
 

@@ -6,22 +6,7 @@ import com.example.snakchatai.utils.DataModel;
 import com.example.snakchatai.utils.DataModelType;
 import com.google.gson.Gson;
 
-import org.webrtc.AudioSource;
-import org.webrtc.AudioTrack;
-import org.webrtc.Camera2Enumerator;
-import org.webrtc.CameraVideoCapturer;
-import org.webrtc.DefaultVideoDecoderFactory;
-import org.webrtc.DefaultVideoEncoderFactory;
-import org.webrtc.EglBase;
-import org.webrtc.IceCandidate;
-import org.webrtc.MediaConstraints;
-import org.webrtc.PeerConnection;
-import org.webrtc.PeerConnectionFactory;
-import org.webrtc.SessionDescription;
-import org.webrtc.SurfaceTextureHelper;
-import org.webrtc.SurfaceViewRenderer;
-import org.webrtc.VideoSource;
-import org.webrtc.VideoTrack;
+import org.webrtc.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,8 +17,8 @@ public class WebRTCClient {
     private final String username;
     private final Gson gson = new Gson();
 
-    private final EglBase eglBase = EglBase.create();
-    private final EglBase.Context eglContext = eglBase.getEglBaseContext();
+    private EglBase eglBase;
+    private EglBase.Context eglContext;
 
     private PeerConnectionFactory factory;
     private PeerConnection peerConnection;
@@ -61,9 +46,12 @@ public class WebRTCClient {
         this.username = username;
 
         initFactory();
+
+        eglBase = EglBase.create();
+        eglContext = eglBase.getEglBaseContext();
+
         factory = createFactory();
 
-        // ✅ TURN + STUN (DO NOT REMOVE)
         iceServers.add(
                 PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443?transport=tcp")
                         .setUsername("83eebabf8b4cce9d5dbcb649")
@@ -77,8 +65,6 @@ public class WebRTCClient {
         audioSource = factory.createAudioSource(new MediaConstraints());
     }
 
-    // ----------------------------------------------------
-    // FACTORY
     // ----------------------------------------------------
 
     private void initFactory() {
@@ -194,12 +180,7 @@ public class WebRTCClient {
             @Override
             public void onCreateSuccess(SessionDescription sdp) {
                 peerConnection.setLocalDescription(new MySdpObserver(), sdp);
-
-                sendSignal(
-                        target,
-                        sdp.description,
-                        DataModelType.Offer
-                );
+                sendSignal(target, sdp.description, DataModelType.Offer);
             }
         }, constraints);
     }
@@ -209,12 +190,7 @@ public class WebRTCClient {
             @Override
             public void onCreateSuccess(SessionDescription sdp) {
                 peerConnection.setLocalDescription(new MySdpObserver(), sdp);
-
-                sendSignal(
-                        target,
-                        sdp.description,
-                        DataModelType.Answer
-                );
+                sendSignal(target, sdp.description, DataModelType.Answer);
             }
         }, new MediaConstraints());
     }
@@ -233,54 +209,61 @@ public class WebRTCClient {
         }
     }
 
-    public void sendIceCandidate(IceCandidate candidate, String target) {
-        if (listener != null) {
-            listener.onTransferDataToOtherPeer(
-                    new DataModel(
-                            target,
-                            username,
-                            gson.toJson(candidate),
-                            DataModelType.IceCandidate
-                    )
-            );
-        }
-    }
-
     // ----------------------------------------------------
-    // CONTROLS
-    // ----------------------------------------------------
-
-    public void switchCamera() {
-        if (videoCapturer != null) {
-            videoCapturer.switchCamera(null);
-        }
-    }
-
-    public void toggleVideo(boolean muted) {
-        if (localVideoTrack != null) {
-            localVideoTrack.setEnabled(!muted);
-        }
-    }
-
-    public void toggleAudio(boolean muted) {
-        if (localAudioTrack != null) {
-            localAudioTrack.setEnabled(!muted);
-        }
-    }
-
-    // ----------------------------------------------------
-    // CLEANUP (CRITICAL)
+    // CLEANUP (FIXED PROPERLY)
     // ----------------------------------------------------
 
     public void closeConnection() {
+
         try {
+
             if (videoCapturer != null) {
                 videoCapturer.stopCapture();
                 videoCapturer.dispose();
+                videoCapturer = null;
             }
-            if (textureHelper != null) textureHelper.dispose();
-            if (peerConnection != null) peerConnection.close();
-            eglBase.release();
+
+            if (localVideoTrack != null) {
+                localVideoTrack.dispose();
+                localVideoTrack = null;
+            }
+
+            if (localAudioTrack != null) {
+                localAudioTrack.dispose();
+                localAudioTrack = null;
+            }
+
+            if (videoSource != null) {
+                videoSource.dispose();
+                videoSource = null;
+            }
+
+            if (audioSource != null) {
+                audioSource.dispose();
+                audioSource = null;
+            }
+
+            if (textureHelper != null) {
+                textureHelper.dispose();
+                textureHelper = null;
+            }
+
+            if (peerConnection != null) {
+                peerConnection.close();
+                peerConnection.dispose();
+                peerConnection = null;
+            }
+
+            if (factory != null) {
+                factory.dispose();
+                factory = null;
+            }
+
+            if (eglBase != null) {
+                eglBase.release();
+                eglBase = null;
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -299,4 +282,36 @@ public class WebRTCClient {
     public interface Listener {
         void onTransferDataToOtherPeer(DataModel model);
     }
+    public void sendIceCandidate(IceCandidate candidate, String target) {
+        if (listener != null) {
+            listener.onTransferDataToOtherPeer(
+                    new DataModel(
+                            target,
+                            username,
+                            gson.toJson(candidate),
+                            DataModelType.IceCandidate
+                    )
+            );
+        }
+    }
+    public void switchCamera() {
+        if (videoCapturer instanceof CameraVideoCapturer) {
+            CameraVideoCapturer cameraCapturer =
+                    (CameraVideoCapturer) videoCapturer;
+            cameraCapturer.switchCamera(null);
+        }
+    }
+
+    public void toggleAudio(boolean isMuted) {
+        if (localAudioTrack != null) {
+            localAudioTrack.setEnabled(!isMuted);
+        }
+    }
+
+    public void toggleVideo(boolean isMuted) {
+        if (localVideoTrack != null) {
+            localVideoTrack.setEnabled(!isMuted);
+        }
+    }
+
 }
