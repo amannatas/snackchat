@@ -1,7 +1,6 @@
 package com.example.snakchatai.model;
 
 import com.google.firebase.Timestamp;
-
 import java.util.List;
 
 public class ChatroomModel {
@@ -10,15 +9,19 @@ public class ChatroomModel {
     Timestamp lastMessageTimestamp;
     String lastMessageSenderId;
     String lastMessage;
+    boolean lastMessageSeen; // Naya field chat list ke liye
 
     public ChatroomModel() {
     }
 
-    public ChatroomModel(String chatroomId, List<String> userIds, Timestamp lastMessageTimestamp, String lastMessageSenderId) {
+    // Updated Constructor (Sare fields ke saath)
+    public ChatroomModel(String chatroomId, List<String> userIds, Timestamp lastMessageTimestamp, String lastMessageSenderId, String lastMessage) {
         this.chatroomId = chatroomId;
         this.userIds = userIds;
         this.lastMessageTimestamp = lastMessageTimestamp;
         this.lastMessageSenderId = lastMessageSenderId;
+        this.lastMessage = lastMessage;
+        this.lastMessageSeen = false; // Default false
     }
 
     public String getChatroomId() {
@@ -61,4 +64,11 @@ public class ChatroomModel {
         this.lastMessage = lastMessage;
     }
 
+    public boolean isLastMessageSeen() {
+        return lastMessageSeen;
+    }
+
+    public void setLastMessageSeen(boolean lastMessageSeen) {
+        this.lastMessageSeen = lastMessageSeen;
+    }
 }

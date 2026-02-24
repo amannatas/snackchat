@@ -8,6 +8,7 @@ espressoCore = "3.5.1"
 appcompat = "1.6.1"
 material = "1.10.0"
 activity = "1.8.0"
+cloudinaryAndroid = "2.4.0"
 constraintlayout = "2.1.4"
 googleGmsGoogleServices = "4.4.4"
 firebaseAnalytics = "23.0.0"
@@ -18,6 +19,8 @@ firebaseMessaging = "25.0.1"
 firebaseDatabase = "22.0.1"
 
 [libraries]
+cloudinary-android = { group = "com.cloudinary", name ="cloudinary-android", version.ref = "cloudinaryAndroid" }
+
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 mesibo-webrtc = { module = "com.mesibo.api:webrtc", version.ref = "mesibo" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.11.0" }
@@ -38,4 +41,3 @@ firebase-database = { group = "com.google.firebase", name = "firebase-database",
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 google-gms-google-services = { id = "com.google.gms.google-services", version.ref = "googleGmsGoogleServices" }
-

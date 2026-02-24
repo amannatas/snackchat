@@ -29,19 +29,7 @@ public class HomeUserAdapter
                            Context context) {
         super(options);
         this.context = context;
-        setHasStableIds(true);
-    }
 
-    @Override
-    public long getItemId(int position) {
-        try {
-            if (position >= 0 && position < getSnapshots().size()) {
-                return getSnapshots().getSnapshot(position).getId().hashCode();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return RecyclerView.NO_ID;
     }
 
     @Override
@@ -75,7 +63,7 @@ public class HomeUserAdapter
                     .addOnFailureListener(e -> {
                         // Double check position hasn't changed
                         if (holder.getBindingAdapterPosition() == safePosition) {
-                            holder.profilePic.setImageResource(R.drawable.baseline_person_24);
+                            holder.profilePic.setImageResource(R.drawable.pic);
                         }
                     });
 

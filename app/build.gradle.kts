@@ -58,7 +58,8 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.database)
-    implementation("com.cloudinary:cloudinary-android:3.1.2")
+    // build.gradle.kts
+    implementation(libs.cloudinary.android)
     testImplementation(libs.junit)
 
     androidTestImplementation(libs.ext.junit)

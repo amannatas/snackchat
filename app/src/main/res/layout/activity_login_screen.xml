@@ -52,7 +52,7 @@
                     android:background="@drawable/custom_edittext"
                     android:drawableLeft="@drawable/baseline_person_24"
                     android:drawablePadding="8dp"
-                    android:hint="Phone Number"
+                    android:hint="Private coustom ID"
                     android:padding="8dp"
                     android:textColor="@color/black"
                     android:imeOptions="actionNext"

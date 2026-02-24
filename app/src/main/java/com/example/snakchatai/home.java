@@ -1,13 +1,12 @@
 package com.example.snakchatai;
 
+import android.content.Context;
 import android.os.Bundle;
-
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -33,7 +32,10 @@ public class home extends Fragment {
         View view = inflater.inflate(R.layout.fragment_home, container, false);
 
         recyclerView = view.findViewById(R.id.chat_recycler_view);
-        recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+
+        // STEP 1 & 2: Yahan humne normal LinearLayoutManager ki jagah
+        // apna naya SafeLinearLayoutManager use kiya hai.
+        recyclerView.setLayoutManager(new SafeLinearLayoutManager(getContext()));
 
         // Firestore query
         Query query = FirebaseUtil.allUserCollectionReference()
@@ -60,5 +62,22 @@ public class home extends Fragment {
     public void onStop() {
         super.onStop();
         if (adapter != null) adapter.stopListening();
+    }
+
+    // --- STEP 1: Safe Manager Class ---
+    // Ye class crash ko catch karti hai jab hum back aate hain
+    class SafeLinearLayoutManager extends LinearLayoutManager {
+        public SafeLinearLayoutManager(Context context) {
+            super(context);
+        }
+
+        @Override
+        public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+            try {
+                super.onLayoutChildren(recycler, state);
+            } catch (IndexOutOfBoundsException e) {
+                Log.e("STC_DEBUG", "Inconsistency detected and handled safely!");
+            }
+        }
     }
 }

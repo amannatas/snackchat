@@ -1,6 +1,7 @@
 package com.example.snakchatai;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -49,7 +50,6 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     private UserModel otherUser;
     private String chatroomId;
     private ChatroomModel chatroomModel;
-
     private ChatRecyclerAdapter adapter;
 
     private EditText messageInput;
@@ -64,7 +64,6 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     private long messageLimit = 30;
 
     private final OkHttpClient httpClient = new OkHttpClient();
-
     private final String CLOUD_NAME = "dbolenrtr";
     private final String UPLOAD_PRESET = "chat_images";
 
@@ -84,10 +83,7 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
             return;
         }
 
-        chatroomId = FirebaseUtil.getChatroomId(
-                FirebaseUtil.currentUserId(),
-                otherUser.getUserId()
-        );
+        chatroomId = FirebaseUtil.getChatroomId(FirebaseUtil.currentUserId(), otherUser.getUserId());
 
         bindViews();
         setupClicks();
@@ -99,15 +95,12 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     }
 
     private void initImagePicker() {
-        imagePickerLauncher =
-                registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
-                        result -> {
-                            if (result.getResultCode() == Activity.RESULT_OK &&
-                                    result.getData() != null &&
-                                    result.getData().getData() != null) {
-                                uploadImageToCloudinary(result.getData().getData());
-                            }
-                        });
+        imagePickerLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        uploadImageToCloudinary(result.getData().getData());
+                    }
+                });
     }
 
     private void bindViews() {
@@ -122,24 +115,20 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
 
     private void setupClicks() {
         backBtn.setOnClickListener(v -> finish());
-
         sendMessageBtn.setOnClickListener(v -> {
             String msg = messageInput.getText().toString().trim();
             if (!msg.isEmpty()) sendMessage(msg, "TEXT");
         });
-
         attachFileBtn.setOnClickListener(v ->
                 com.github.dhaval2404.imagepicker.ImagePicker.with(this)
-                        .crop()
-                        .compress(1024)
-                        .maxResultSize(1080, 1080)
+                        .crop().compress(1024).maxResultSize(1080, 1080)
                         .createIntent(intent -> {
                             imagePickerLauncher.launch(intent);
                             return null;
                         })
         );
-
         videoCallBtn.setOnClickListener(v -> {
+            sendCallNotification();
             Intent intent = new Intent(this, CallActivity.class);
             intent.putExtra("targetUserId", otherUser.getUserId());
             startActivity(intent);
@@ -147,10 +136,12 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
     }
 
     private void setupRecycler() {
-        LinearLayoutManager lm = new LinearLayoutManager(this);
+        SafeLinearLayoutManager lm = new SafeLinearLayoutManager(this);
         lm.setReverseLayout(true);
         lm.setStackFromEnd(true);
         recyclerView.setLayoutManager(lm);
+
+        recyclerView.setItemAnimator(null);
 
         Query query = FirebaseUtil.getChatroomMessageReference(chatroomId)
                 .orderBy("timestamp", Query.Direction.DESCENDING)
@@ -176,7 +167,7 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                if (!rv.canScrollVertically(-1) && !isLoadingMore) {
+                if (!rv.canScrollVertically(-1) && !isLoadingMore && dy < 0) {
                     loadMoreMessages();
                 }
             }
@@ -196,141 +187,123 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
                         .setQuery(query, ChatMessageModel.class)
                         .build();
 
-        adapter.updateOptions(options);
-
-        recyclerView.postDelayed(() -> isLoadingMore = false, 1000);
+        recyclerView.post(() -> {
+            if (adapter != null) {
+                adapter.updateOptions(options);
+                recyclerView.postDelayed(() -> isLoadingMore = false, 1500);
+            }
+        });
     }
 
     private void sendMessage(String msg, String type) {
         if (chatroomModel == null) return;
 
+        // Update Chatroom state
         chatroomModel.setLastMessage(type.equals("IMAGE") ? "Image" : msg);
         chatroomModel.setLastMessageSenderId(FirebaseUtil.currentUserId());
         chatroomModel.setLastMessageTimestamp(Timestamp.now());
+        chatroomModel.setLastMessageSeen(false); // New message is unseen by other
 
         FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
 
+        // Add message to sub-collection
+        // Seen is false by default when sending
         FirebaseUtil.getChatroomMessageReference(chatroomId)
-                .add(new ChatMessageModel(msg,
-                        FirebaseUtil.currentUserId(),
-                        Timestamp.now(),
-                        type))
-                .addOnSuccessListener(documentReference -> {
-                    if (type.equals("TEXT")) messageInput.setText("");
-                });
+                .add(new ChatMessageModel(msg, FirebaseUtil.currentUserId(), Timestamp.now(), type, false))
+                .addOnSuccessListener(doc -> { if (type.equals("TEXT")) messageInput.setText(""); });
 
         sendChatNotification(msg);
     }
 
+    private void markMessageAsSeen() {
+        // Mark all messages sent by OTHER user as seen
+        FirebaseUtil.getChatroomMessageReference(chatroomId)
+                .whereEqualTo("senderId", otherUser.getUserId())
+                .whereEqualTo("seen", false)
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                        doc.getReference().update("seen", true);
+                    }
+                });
+
+        // Also update the chatroom main seen status if I was the receiver
+        if (chatroomModel != null && !chatroomModel.getLastMessageSenderId().equals(FirebaseUtil.currentUserId())) {
+            FirebaseUtil.getChatroomReference(chatroomId).update("lastMessageSeen", true);
+        }
+    }
+
     private void sendChatNotification(String message) {
         try {
-            String url = "https://notification-server-18zv.onrender.com/send-chat-notification";
-
             JSONObject jsonBody = new JSONObject();
             jsonBody.put("targetUserId", otherUser.getUserId());
             jsonBody.put("senderId", FirebaseUtil.currentUserId());
             jsonBody.put("message", message);
 
-            RequestBody body = RequestBody.create(
-                    jsonBody.toString(),
-                    MediaType.get("application/json; charset=utf-8")
-            );
-
+            RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.get("application/json; charset=utf-8"));
             Request request = new Request.Builder()
-                    .url(url)
+                    .url("https://notification-server-18zv.onrender.com/send-chat-notification")
                     .post(body)
                     .build();
 
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, java.io.IOException e) {
-                    Log.e("ChatScreen", "Notification failed", e);
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws java.io.IOException {
-                    if (!response.isSuccessful()) {
-                        Log.e("ChatScreen", "Notification failed");
-                    }
-                }
-            });
-
-        } catch (Exception e) {
-            Log.e("ChatScreen", "Notification exception", e);
-        }
-    }
-
-    private void uploadImageToCloudinary(Uri uri) {
-        try {
-            InputStream inputStream = getContentResolver().openInputStream(uri);
-            byte[] bytes = new byte[inputStream.available()];
-            inputStream.read(bytes);
-            inputStream.close();
-
-            RequestBody fileBody = RequestBody.create(
-                    bytes,
-                    MediaType.parse("image/*")
-            );
-
-            MultipartBody requestBody = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("file", "chat_image.jpg", fileBody)
-                    .addFormDataPart("upload_preset", UPLOAD_PRESET)
-                    .build();
-
-            Request request = new Request.Builder()
-                    .url("https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/image/upload")
-                    .post(requestBody)
-                    .build();
-
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, java.io.IOException e) {
-                    Log.e("Cloudinary", "Upload failed", e);
+                    // Agar network error ho ya server offline ho
+                    Log.e("ChatNotification", "Failed to send: " + e.getMessage());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws java.io.IOException {
                     if (response.isSuccessful()) {
-                        try {
-                            String json = response.body().string();
-                            JSONObject obj = new JSONObject(json);
-                            final String imageUrl = obj.getString("secure_url");
-
-                            runOnUiThread(() ->
-                                    sendMessage(imageUrl, "IMAGE")
-                            );
-
-                        } catch (Exception e) {
-                            Log.e("Cloudinary", "JSON parse error", e);
-                        }
+                        // Agar server ne 200 OK diya
+                        Log.d("ChatNotification", "Success! Response: " + response.body().string());
+                    } else {
+                        // Agar server ne error diya (404, 500, etc.)
+                        Log.e("ChatNotification", "Server Error: " + response.code());
                     }
                 }
             });
-
         } catch (Exception e) {
-            Log.e("Cloudinary", "Upload exception", e);
+            Log.e("ChatNotification", "JSON Error", e);
         }
     }
 
-    private void getOrCreateChatroom() {
-        FirebaseUtil.getChatroomReference(chatroomId)
-                .get()
-                .addOnSuccessListener(doc -> {
-                    chatroomModel = doc.toObject(ChatroomModel.class);
-                    if (chatroomModel == null) {
-                        chatroomModel = new ChatroomModel(
-                                chatroomId,
-                                Arrays.asList(
-                                        FirebaseUtil.currentUserId(),
-                                        otherUser.getUserId()),
-                                Timestamp.now(),
-                                ""
-                        );
-                        FirebaseUtil.getChatroomReference(chatroomId)
-                                .set(chatroomModel);
+    private void uploadImageToCloudinary(Uri uri) {
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            byte[] bytes = new byte[is.available()];
+            is.read(bytes); is.close();
+            RequestBody fileBody = RequestBody.create(bytes, MediaType.parse("image/*"));
+            MultipartBody requestBody = new MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", "chat_image.jpg", fileBody)
+                    .addFormDataPart("upload_preset", UPLOAD_PRESET).build();
+            Request request = new Request.Builder().url("https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/image/upload").post(requestBody).build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, java.io.IOException e) {}
+                @Override public void onResponse(Call call, Response response) throws java.io.IOException {
+                    if (response.isSuccessful()) {
+                        try {
+                            JSONObject obj = new JSONObject(response.body().string());
+                            String imageUrl = obj.getString("secure_url");
+                            runOnUiThread(() -> sendMessage(imageUrl, "IMAGE"));
+                        } catch (Exception e) { Log.e("Cloudinary", "Parse error", e); }
                     }
-                });
+                }
+            });
+        } catch (Exception e) { Log.e("Cloudinary", "Upload error", e); }
+    }
+
+    private void getOrCreateChatroom() {
+        FirebaseUtil.getChatroomReference(chatroomId).get().addOnSuccessListener(doc -> {
+            chatroomModel = doc.toObject(ChatroomModel.class);
+            if (chatroomModel == null) {
+                // FIXED CONSTRUCTOR: Added 5th argument (empty message) to match your ChatroomModel
+                chatroomModel = new ChatroomModel(chatroomId, Arrays.asList(FirebaseUtil.currentUserId(), otherUser.getUserId()), Timestamp.now(), "", "");
+                FirebaseUtil.getChatroomReference(chatroomId).set(chatroomModel);
+            }
+            markMessageAsSeen(); // Mark seen once chatroom is loaded
+        });
     }
 
     @Override
@@ -338,57 +311,66 @@ public class chat_screen extends AppCompatActivity implements ChatRecyclerAdapte
         if (active) {
             if (actionMode == null) {
                 actionMode = startActionMode(new ActionMode.Callback() {
-                    @Override
-                    public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-                        getMenuInflater().inflate(R.menu.delete_chat_menu, menu);
-                        return true;
-                    }
-
-                    @Override
-                    public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+                    @Override public boolean onCreateActionMode(ActionMode mode, Menu menu) { getMenuInflater().inflate(R.menu.delete_chat_menu, menu); return true; }
+                    @Override public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
                         if (item.getItemId() == R.id.delete_chat) {
-                            for (DocumentSnapshot s : adapter.getSelectedItems()) {
-                                s.getReference().delete();
-                            }
-                            mode.finish();
-                            return true;
-                        }
-                        return false;
+                            for (DocumentSnapshot s : adapter.getSelectedItems()) s.getReference().delete();
+                            mode.finish(); return true;
+                        } return false;
                     }
-
-                    @Override
-                    public void onDestroyActionMode(ActionMode mode) {
-                        actionMode = null;
-                        adapter.clearSelection();
-                    }
-
-                    @Override
-                    public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-                        return false;
-                    }
+                    @Override public void onDestroyActionMode(ActionMode mode) { actionMode = null; adapter.clearSelection(); }
+                    @Override public boolean onPrepareActionMode(ActionMode mode, Menu menu) { return false; }
                 });
             }
             actionMode.setTitle(String.valueOf(count));
-        } else if (actionMode != null) {
-            actionMode.finish();
-        }
+        } else if (actionMode != null) { actionMode.finish(); }
     }
 
-    @Override
-    protected void onStart() {
+    @Override protected void onStart() {
         super.onStart();
         if (adapter != null) adapter.startListening();
+        markMessageAsSeen(); // Mark seen when user returns to screen
     }
+    @Override protected void onStop() { super.onStop(); if (adapter != null) adapter.stopListening(); }
+    @Override protected void onDestroy() { super.onDestroy(); if (actionMode != null) actionMode.finish(); }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (adapter != null) adapter.stopListening();
+    class SafeLinearLayoutManager extends LinearLayoutManager {
+        public SafeLinearLayoutManager(Context context) { super(context); }
+        @Override
+        public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+            try { super.onLayoutChildren(recycler, state); }
+            catch (IndexOutOfBoundsException e) { Log.e("STC_DEBUG", "Caught RecyclerView Inconsistency!"); }
+        }
     }
+    private void sendCallNotification() {
+        try {
+            JSONObject jsonBody = new JSONObject();
+            jsonBody.put("targetUserId", otherUser.getUserId());
+            jsonBody.put("senderId", FirebaseUtil.currentUserId());
+            // Agar aapke paas current user ka naam hai toh yahan dynamic kar dein
+            jsonBody.put("senderName", "Aman (SnakeChat)");
+            jsonBody.put("message", "Incoming Video Call..."); // Ye line add karein
+            jsonBody.put("type", "VIDEO_CALL");
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (actionMode != null) actionMode.finish();
+            RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.get("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url("https://notification-server-18zv.onrender.com/send-chat-notification") // Server ka endpoint
+                    .post(body)
+                    .build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, java.io.IOException e) {
+                    Log.e("CallNotification", "Failed to send call notification: " + e.getMessage());
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws java.io.IOException {
+                    Log.d("CallNotification", "Call notification sent success!");
+                }
+            });
+        } catch (Exception e) {
+            Log.e("CallNotification", "Error: " + e.getMessage());
+        }
     }
 }

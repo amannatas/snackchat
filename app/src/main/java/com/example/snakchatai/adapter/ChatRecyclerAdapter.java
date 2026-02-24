@@ -19,9 +19,11 @@ import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
 import com.google.firebase.firestore.DocumentSnapshot;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public class ChatRecyclerAdapter
@@ -44,20 +46,7 @@ public class ChatRecyclerAdapter
         super(options);
         this.context = context;
         this.selectionListener = selectionListener;
-        setHasStableIds(true);
-    }
-
-    @Override
-    public long getItemId(int position) {
-        try {
-            if (position >= 0 && position < getSnapshots().size()) {
-                DocumentSnapshot snapshot = getSnapshots().getSnapshot(position);
-                return snapshot.getId().hashCode();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return RecyclerView.NO_ID;
+        setHasStableIds(false);
     }
 
     @Override
@@ -67,14 +56,8 @@ public class ChatRecyclerAdapter
             @NonNull ChatMessageModel model
     ) {
         try {
-            // Safe position check
             int safePosition = holder.getBindingAdapterPosition();
-            if (safePosition == RecyclerView.NO_POSITION) {
-                return;
-            }
-
-            // Check bounds before accessing snapshots
-            if (safePosition >= getSnapshots().size()) {
+            if (safePosition == RecyclerView.NO_POSITION || safePosition >= getSnapshots().size()) {
                 return;
             }
 
@@ -89,18 +72,36 @@ public class ChatRecyclerAdapter
             holder.leftChatTextview.setVisibility(View.GONE);
             holder.rightChatTextview.setVisibility(View.GONE);
 
-            // Handle message type
+            // --- TIME LOGIC ---
+            if (model.getTimestamp() != null) {
+                SimpleDateFormat sdf = new SimpleDateFormat("HH:mm", Locale.getDefault());
+                String timeString = sdf.format(model.getTimestamp().toDate());
+                holder.leftTime.setText(timeString);
+                holder.rightTime.setText(timeString);
+            }
+
+            // --- SEEN STATUS LOGIC (Only for me) ---
+            if (isMe) {
+                holder.seenStatusIcon.setVisibility(View.VISIBLE);
+                if (model.isSeen()) {
+                    // Yahan aap apna blue tick icon set karein
+                    holder.seenStatusIcon.setImageResource(R.drawable.ic_seen_blue);
+                } else {
+                    // Yahan aap apna grey tick icon set karein
+                    holder.seenStatusIcon.setImageResource(R.drawable.ic_delivered_grey);
+                }
+            } else {
+                holder.seenStatusIcon.setVisibility(View.GONE);
+            }
+
+            // --- MESSAGE CONTENT LOGIC ---
             if ("IMAGE".equals(model.getMessageType())) {
                 if (isMe) {
                     holder.rightChatImageView.setVisibility(View.VISIBLE);
-                    Glide.with(context)
-                            .load(model.getMessage())
-                            .into(holder.rightChatImageView);
+                    Glide.with(context).load(model.getMessage()).into(holder.rightChatImageView);
                 } else {
                     holder.leftChatImageView.setVisibility(View.VISIBLE);
-                    Glide.with(context)
-                            .load(model.getMessage())
-                            .into(holder.leftChatImageView);
+                    Glide.with(context).load(model.getMessage()).into(holder.leftChatImageView);
                 }
             } else {
                 if (isMe) {
@@ -112,14 +113,11 @@ public class ChatRecyclerAdapter
                 }
             }
 
-            // Get document ID safely
+            // --- SELECTION LOGIC ---
             DocumentSnapshot snapshot = getSnapshots().getSnapshot(safePosition);
             String docId = snapshot.getId();
-
-            // Update selection state
             holder.itemView.setActivated(selectedIds.contains(docId));
 
-            // Long click for selection
             holder.itemView.setOnLongClickListener(v -> {
                 int pos = holder.getBindingAdapterPosition();
                 if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
@@ -128,19 +126,14 @@ public class ChatRecyclerAdapter
                 return true;
             });
 
-            // Regular click for multi-select
             holder.itemView.setOnClickListener(v -> {
                 if (!isSelectionMode) return;
-
                 int pos = holder.getBindingAdapterPosition();
                 if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
                     toggleSelection(pos);
                 }
             });
 
-        } catch (IndexOutOfBoundsException e) {
-            // Handle position out of bounds gracefully
-            e.printStackTrace();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -148,10 +141,7 @@ public class ChatRecyclerAdapter
 
     private void toggleSelection(int position) {
         try {
-            if (position == RecyclerView.NO_POSITION || position >= getSnapshots().size()) {
-                return;
-            }
-
+            if (position == RecyclerView.NO_POSITION || position >= getSnapshots().size()) return;
             DocumentSnapshot snapshot = getSnapshots().getSnapshot(position);
             String docId = snapshot.getId();
 
@@ -167,9 +157,7 @@ public class ChatRecyclerAdapter
             if (selectionListener != null) {
                 selectionListener.onSelectionModeChanged(isSelectionMode, selectedIds.size());
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) { e.printStackTrace(); }
     }
 
     public void clearSelection() {
@@ -177,71 +165,55 @@ public class ChatRecyclerAdapter
         selectedIds.clear();
         isSelectionMode = false;
         notifyDataSetChanged();
-
-        if (selectionListener != null) {
-            selectionListener.onSelectionModeChanged(false, 0);
-        }
+        if (selectionListener != null) selectionListener.onSelectionModeChanged(false, 0);
     }
 
     public List<DocumentSnapshot> getSelectedItems() {
         List<DocumentSnapshot> list = new ArrayList<>();
-
         try {
             for (int i = 0; i < getSnapshots().size(); i++) {
                 DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
-                if (selectedIds.contains(snapshot.getId())) {
-                    list.add(snapshot);
-                }
+                if (selectedIds.contains(snapshot.getId())) list.add(snapshot);
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
+        } catch (Exception e) { e.printStackTrace(); }
         return list;
     }
 
     @Override
     public void onDataChanged() {
         super.onDataChanged();
-
         if (!selectedIds.isEmpty()) {
             selectedIds.clear();
             isSelectionMode = false;
-
-            if (selectionListener != null) {
-                selectionListener.onSelectionModeChanged(false, 0);
-            }
+            if (selectionListener != null) selectionListener.onSelectionModeChanged(false, 0);
         }
     }
 
     @NonNull
     @Override
-    public ChatModelViewHolder onCreateViewHolder(
-            @NonNull ViewGroup parent,
-            int viewType
-    ) {
-        View view = LayoutInflater.from(context)
-                .inflate(R.layout.chat_message_recycler_row, parent, false);
+    public ChatModelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View view = LayoutInflater.from(context).inflate(R.layout.chat_message_recycler_row, parent, false);
         return new ChatModelViewHolder(view);
     }
 
     static class ChatModelViewHolder extends RecyclerView.ViewHolder {
-
         LinearLayout leftChatLayout, rightChatLayout;
-        TextView leftChatTextview, rightChatTextview;
-        ImageView leftChatImageView, rightChatImageView;
+        TextView leftChatTextview, rightChatTextview, leftTime, rightTime;
+        ImageView leftChatImageView, rightChatImageView, seenStatusIcon;
 
         ChatModelViewHolder(@NonNull View itemView) {
             super(itemView);
-
             leftChatLayout = itemView.findViewById(R.id.left_chat_layout);
             rightChatLayout = itemView.findViewById(R.id.right_chat_layout);
-
             leftChatTextview = itemView.findViewById(R.id.left_chat_textview);
             rightChatTextview = itemView.findViewById(R.id.right_chat_textview);
-
             leftChatImageView = itemView.findViewById(R.id.left_chat_imageview);
             rightChatImageView = itemView.findViewById(R.id.right_chat_imageview);
+
+            // Naye IDs jo XML mein add karni hain:
+            leftTime = itemView.findViewById(R.id.left_time_text);
+            rightTime = itemView.findViewById(R.id.right_time_text);
+            seenStatusIcon = itemView.findViewById(R.id.seen_status_icon);
         }
     }
 }
