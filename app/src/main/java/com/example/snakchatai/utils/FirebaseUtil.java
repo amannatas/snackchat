@@ -16,6 +16,11 @@ import java.util.List;
 
 public class FirebaseUtil {
 
+    // --- FIX: Firestore instance ka method add kiya ---
+    public static FirebaseFirestore getFirestore() {
+        return FirebaseFirestore.getInstance();
+    }
+
     public static FirebaseDatabase database = FirebaseDatabase.getInstance(
             "https://snakchat-ai-default-rtdb.asia-southeast1.firebasedatabase.app"
     );
@@ -25,22 +30,19 @@ public class FirebaseUtil {
     }
 
     public static boolean isLoggedIn(){
-        if(currentUserId()!=null){
-            return true;
-        }
-        return false;
+        return currentUserId() != null;
     }
 
     public static DocumentReference currentUserDetails(){
-        return FirebaseFirestore.getInstance().collection("users").document(currentUserId());
+        return getFirestore().collection("users").document(currentUserId());
     }
 
     public static CollectionReference allUserCollectionReference(){
-        return FirebaseFirestore.getInstance().collection("users");
+        return getFirestore().collection("users");
     }
 
     public static DocumentReference getChatroomReference(String chatroomId){
-        return FirebaseFirestore.getInstance().collection("chatrooms").document(chatroomId);
+        return getFirestore().collection("chatrooms").document(chatroomId);
     }
 
     public static CollectionReference getChatroomMessageReference(String chatroomId){
@@ -56,7 +58,7 @@ public class FirebaseUtil {
     }
 
     public static CollectionReference allChatroomCollectionReference(){
-        return FirebaseFirestore.getInstance().collection("chatrooms");
+        return getFirestore().collection("chatrooms");
     }
 
     public static DocumentReference getOtherUserFromChatroom(List<String> userIds){
@@ -68,7 +70,7 @@ public class FirebaseUtil {
     }
 
     public static String timestampToString(Timestamp timestamp){
-        return new SimpleDateFormat("HH:MM").format(timestamp.toDate());
+        return new SimpleDateFormat("HH:mm").format(timestamp.toDate());
     }
 
     public static void logout(){
