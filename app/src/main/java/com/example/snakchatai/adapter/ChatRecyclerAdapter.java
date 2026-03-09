@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.example.snakchatai.R;
 import com.example.snakchatai.model.ChatMessageModel;
+import com.example.snakchatai.utils.AESUtils; // 👈 AES Utils Import
 import com.example.snakchatai.utils.FirebaseUtil;
 import com.firebase.ui.firestore.FirestoreRecyclerAdapter;
 import com.firebase.ui.firestore.FirestoreRecyclerOptions;
@@ -46,7 +47,6 @@ public class ChatRecyclerAdapter
         super(options);
         this.context = context;
         this.selectionListener = selectionListener;
-        setHasStableIds(false);
     }
 
     @Override
@@ -64,9 +64,9 @@ public class ChatRecyclerAdapter
             boolean isMe = model.getSenderId() != null &&
                     model.getSenderId().equals(FirebaseUtil.currentUserId());
 
+            // Visibility Setup
             holder.leftChatLayout.setVisibility(isMe ? View.GONE : View.VISIBLE);
             holder.rightChatLayout.setVisibility(isMe ? View.VISIBLE : View.GONE);
-
             holder.leftChatImageView.setVisibility(View.GONE);
             holder.rightChatImageView.setVisibility(View.GONE);
             holder.leftChatTextview.setVisibility(View.GONE);
@@ -80,22 +80,21 @@ public class ChatRecyclerAdapter
                 holder.rightTime.setText(timeString);
             }
 
-            // --- SEEN STATUS LOGIC (Only for me) ---
+            // --- SEEN STATUS LOGIC (Ticks) ---
             if (isMe) {
                 holder.seenStatusIcon.setVisibility(View.VISIBLE);
                 if (model.isSeen()) {
-                    // Yahan aap apna blue tick icon set karein
                     holder.seenStatusIcon.setImageResource(R.drawable.ic_seen_blue);
                 } else {
-                    // Yahan aap apna grey tick icon set karein
                     holder.seenStatusIcon.setImageResource(R.drawable.ic_delivered_grey);
                 }
             } else {
                 holder.seenStatusIcon.setVisibility(View.GONE);
             }
 
-            // --- MESSAGE CONTENT LOGIC ---
+            // --- MESSAGE CONTENT & DECRYPTION LOGIC ---
             if ("IMAGE".equals(model.getMessageType())) {
+                // Images usually aren't encrypted this way, directly load URL
                 if (isMe) {
                     holder.rightChatImageView.setVisibility(View.VISIBLE);
                     Glide.with(context).load(model.getMessage()).into(holder.rightChatImageView);
@@ -104,12 +103,15 @@ public class ChatRecyclerAdapter
                     Glide.with(context).load(model.getMessage()).into(holder.leftChatImageView);
                 }
             } else {
+                // 🔒 PRO-FIX: Text message ko decrypt kar ke dikhao
+                String decryptedMessage = AESUtils.decrypt(model.getMessage());
+
                 if (isMe) {
                     holder.rightChatTextview.setVisibility(View.VISIBLE);
-                    holder.rightChatTextview.setText(model.getMessage());
+                    holder.rightChatTextview.setText(decryptedMessage);
                 } else {
                     holder.leftChatTextview.setVisibility(View.VISIBLE);
-                    holder.leftChatTextview.setText(model.getMessage());
+                    holder.leftChatTextview.setText(decryptedMessage);
                 }
             }
 
@@ -120,18 +122,14 @@ public class ChatRecyclerAdapter
 
             holder.itemView.setOnLongClickListener(v -> {
                 int pos = holder.getBindingAdapterPosition();
-                if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
-                    toggleSelection(pos);
-                }
+                if (pos != RecyclerView.NO_POSITION) toggleSelection(pos);
                 return true;
             });
 
             holder.itemView.setOnClickListener(v -> {
                 if (!isSelectionMode) return;
                 int pos = holder.getBindingAdapterPosition();
-                if (pos != RecyclerView.NO_POSITION && pos < getSnapshots().size()) {
-                    toggleSelection(pos);
-                }
+                if (pos != RecyclerView.NO_POSITION) toggleSelection(pos);
             });
 
         } catch (Exception e) {
@@ -141,7 +139,6 @@ public class ChatRecyclerAdapter
 
     private void toggleSelection(int position) {
         try {
-            if (position == RecyclerView.NO_POSITION || position >= getSnapshots().size()) return;
             DocumentSnapshot snapshot = getSnapshots().getSnapshot(position);
             String docId = snapshot.getId();
 
@@ -161,7 +158,6 @@ public class ChatRecyclerAdapter
     }
 
     public void clearSelection() {
-        if (selectedIds.isEmpty()) return;
         selectedIds.clear();
         isSelectionMode = false;
         notifyDataSetChanged();
@@ -170,23 +166,11 @@ public class ChatRecyclerAdapter
 
     public List<DocumentSnapshot> getSelectedItems() {
         List<DocumentSnapshot> list = new ArrayList<>();
-        try {
-            for (int i = 0; i < getSnapshots().size(); i++) {
-                DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
-                if (selectedIds.contains(snapshot.getId())) list.add(snapshot);
-            }
-        } catch (Exception e) { e.printStackTrace(); }
-        return list;
-    }
-
-    @Override
-    public void onDataChanged() {
-        super.onDataChanged();
-        if (!selectedIds.isEmpty()) {
-            selectedIds.clear();
-            isSelectionMode = false;
-            if (selectionListener != null) selectionListener.onSelectionModeChanged(false, 0);
+        for (int i = 0; i < getSnapshots().size(); i++) {
+            DocumentSnapshot snapshot = getSnapshots().getSnapshot(i);
+            if (selectedIds.contains(snapshot.getId())) list.add(snapshot);
         }
+        return list;
     }
 
     @NonNull
@@ -209,8 +193,6 @@ public class ChatRecyclerAdapter
             rightChatTextview = itemView.findViewById(R.id.right_chat_textview);
             leftChatImageView = itemView.findViewById(R.id.left_chat_imageview);
             rightChatImageView = itemView.findViewById(R.id.right_chat_imageview);
-
-            // Naye IDs jo XML mein add karni hain:
             leftTime = itemView.findViewById(R.id.left_time_text);
             rightTime = itemView.findViewById(R.id.right_time_text);
             seenStatusIcon = itemView.findViewById(R.id.seen_status_icon);

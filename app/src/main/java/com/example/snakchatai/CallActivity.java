@@ -11,25 +11,21 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AlertDialog;
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.example.snakchatai.databinding.ActivityCallBinding;
 import com.example.snakchatai.repository.MainRepository;
-import com.example.snakchatai.utils.DataModelType;
 import com.example.snakchatai.utils.FirebaseUtil;
-import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 public class CallActivity extends AppCompatActivity implements MainRepository.Listener {
 
     private ActivityCallBinding views;
     private MainRepository mainRepository;
-
     private boolean isCameraMuted = false;
     private boolean isMicrophoneMuted = false;
-
     private static final int PERMISSION_REQUEST_CODE = 101;
-
     private String targetUserId;
     private boolean isCallEnded = false;
 
@@ -39,14 +35,8 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
         views = ActivityCallBinding.inflate(getLayoutInflater());
         setContentView(views.getRoot());
 
-        if (getIntent() != null && getIntent().hasExtra("targetUserId")) {
+        if (getIntent() != null) {
             targetUserId = getIntent().getStringExtra("targetUserId");
-        }
-
-        if (targetUserId == null || targetUserId.isEmpty()) {
-            Toast.makeText(this, "Invalid call request", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
         }
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -59,10 +49,9 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
         if (hasPermissions()) {
             onPermissionGranted();
         } else {
-            requestPermissions(
+            ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO},
-                    PERMISSION_REQUEST_CODE
-            );
+                    PERMISSION_REQUEST_CODE);
         }
     }
 
@@ -74,22 +63,11 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            boolean granted = true;
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    granted = false;
-                    break;
-                }
-            }
-
-            if (granted) {
-                onPermissionGranted();
-            } else {
-                Toast.makeText(this, "Camera & Microphone permission required", Toast.LENGTH_LONG).show();
-                finish();
-            }
+        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            onPermissionGranted();
+        } else {
+            Toast.makeText(this, "Permissions required", Toast.LENGTH_LONG).show();
+            finish();
         }
     }
 
@@ -97,79 +75,100 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
         mainRepository = MainRepository.getInstance();
         mainRepository.listener = this;
 
-        mainRepository.login(FirebaseUtil.currentUserId(), this, this::initUI);
+        // Z-Order: Local view ko remote ke upar dikhane ke liye
+        views.localView.setZOrderMediaOverlay(true);
+
+        mainRepository.login(FirebaseUtil.currentUserId(), this, () -> {
+            runOnUiThread(this::initUI);
+        });
     }
 
     private void initUI() {
-
-        views.localView.setMirror(true);
-        views.localView.setZOrderMediaOverlay(true);
-
         mainRepository.initLocalView(views.localView);
+        mainRepository.initRemoteView(views.remoteView);
 
-        views.callLayout.setVisibility(View.VISIBLE);
-        views.incomingCallLayout.setVisibility(View.GONE);
-
-        FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(targetUserId)
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        DocumentSnapshot doc = task.getResult();
-                        if (doc != null && doc.exists()) {
-
-                            String otherUsername = doc.getString("username");
-
-                            if (otherUsername == null || otherUsername.isEmpty()) {
-                                Toast.makeText(this, "Username not found", Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-
-                            views.incomingNameTV.setText("Calling " + otherUsername);
-
-                            mainRepository.sendCallRequest(
-                                    targetUserId,
-                                    () -> Toast.makeText(this, "User not available", Toast.LENGTH_SHORT).show()
-                            );
-                        }
-                    }
-                });
-
+        // Signalling observer setup
         mainRepository.subscribeForLatestEvent(data -> {
-            if (data.getType() == DataModelType.StartCall) {
-                runOnUiThread(() -> {
-                    views.incomingNameTV.setText(data.getSender() + " is calling you");
-                    views.incomingCallLayout.setVisibility(View.VISIBLE);
-                });
-            }
+            runOnUiThread(() -> {
+                switch (data.getType()) {
+                    case StartCall:
+                        views.incomingNameTV.setText(data.getSender() + " is calling...");
+                        views.incomingCallLayout.setVisibility(View.VISIBLE);
+                        views.callLayout.setVisibility(View.GONE);
+                        break;
+                    case EndCall:
+                    case RejectCall:
+                        Toast.makeText(this, "Call Terminated", Toast.LENGTH_SHORT).show();
+                        finish();
+                        break;
+                }
+            });
         });
 
-        views.switchCameraButton.setOnClickListener(v -> mainRepository.switchCamera());
+        if (getIntent().getBooleanExtra("isIncoming", false)) {
+            views.incomingCallLayout.setVisibility(View.VISIBLE);
+            views.callLayout.setVisibility(View.GONE);
+        } else {
+            startCallProcess();
+        }
 
-        views.micButton.setOnClickListener(v -> {
-            mainRepository.toggleAudio(isMicrophoneMuted);
-            isMicrophoneMuted = !isMicrophoneMuted;
+        setupButtons();
+    }
+
+    private void startCallProcess() {
+        views.incomingCallLayout.setVisibility(View.GONE);
+        views.callLayout.setVisibility(View.VISIBLE);
+
+        if (targetUserId != null) {
+            mainRepository.sendCallRequest(targetUserId, () -> {
+                mainRepository.startCall(targetUserId);
+            });
+        }
+    }
+
+    private void setupButtons() {
+        // Accept Button
+        views.acceptButton.setOnClickListener(v -> {
+            views.incomingCallLayout.setVisibility(View.GONE);
+            views.callLayout.setVisibility(View.VISIBLE);
+            // Repository automatically handles 'Answer' when it sees 'Offer' in the stream
         });
 
-        views.videoButton.setOnClickListener(v -> {
-            mainRepository.toggleVideo(isCameraMuted);
-            isCameraMuted = !isCameraMuted;
+        // Reject/End Buttons
+        views.rejectButton.setOnClickListener(v -> {
+            mainRepository.rejectCall();
+            finish();
         });
 
         views.endCallButton.setOnClickListener(v -> showEndCallDialog());
+
+        // Controls
+        views.switchCameraButton.setOnClickListener(v -> mainRepository.switchCamera());
+
+        views.micButton.setOnClickListener(v -> {
+            isMicrophoneMuted = !isMicrophoneMuted;
+            mainRepository.toggleAudio(isMicrophoneMuted);
+            views.micButton.setImageResource(isMicrophoneMuted ?
+                    R.drawable.ic_baseline_mic_off_24 : R.drawable.ic_baseline_mic_24);
+        });
+
+        views.videoButton.setOnClickListener(v -> {
+            isCameraMuted = !isCameraMuted;
+            mainRepository.toggleVideo(isCameraMuted);
+            views.videoButton.setImageResource(isCameraMuted ?
+                    R.drawable.ic_baseline_videocam_off_24 : R.drawable.ic_baseline_videocam_24);
+        });
     }
 
     private void showEndCallDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("End Call")
-                .setMessage("Are you sure you want to end this call?")
-                .setCancelable(true)
-                .setPositiveButton("Yes", (dialog, which) -> {
+                .setMessage("Are you sure?")
+                .setPositiveButton("Yes", (d, w) -> {
                     endCallSafely();
                     finish();
                 })
-                .setNegativeButton("No", (dialog, which) -> dialog.dismiss())
+                .setNegativeButton("No", null)
                 .show();
     }
 
@@ -182,40 +181,17 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
 
     @Override
     public void webrtcConnected() {
-        runOnUiThread(() -> {
-            views.incomingCallLayout.setVisibility(View.GONE);
-            views.callLayout.setVisibility(View.VISIBLE);
-            mainRepository.initRemoteView(views.remoteView);
-        });
+        runOnUiThread(() -> Toast.makeText(this, "Connected!", Toast.LENGTH_SHORT).show());
     }
 
     @Override
     public void webrtcClosed() {
-        runOnUiThread(() -> {
-            if (!isFinishing()) {
-                finish();
-            }
-        });
+        runOnUiThread(this::finish);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-
-        if (views != null) {
-            if (views.localView != null) {
-                views.localView.release();
-            }
-
-            if (views.remoteView != null) {
-                views.remoteView.release();
-            }
-        }
-
-        if (mainRepository != null) {
-            mainRepository.listener = null;
-        }
-
         endCallSafely();
     }
 }

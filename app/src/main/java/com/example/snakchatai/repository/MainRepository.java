@@ -1,6 +1,9 @@
 package com.example.snakchatai.repository;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 
 import com.example.snakchatai.model.CallLogModel;
 import com.example.snakchatai.remote.FirebaseClient;
@@ -13,10 +16,17 @@ import com.google.gson.Gson;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
+import org.webrtc.RtpReceiver;
+import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceViewRenderer;
+import org.webrtc.VideoTrack;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainRepository implements WebRTCClient.Listener {
 
+    private static final String TAG = "MainRepository";
     private static MainRepository instance;
 
     public static synchronized MainRepository getInstance() {
@@ -27,170 +37,129 @@ public class MainRepository implements WebRTCClient.Listener {
     }
 
     private final Gson gson = new Gson();
-
     private FirebaseClient firebaseClient;
     private WebRTCClient webRTCClient;
 
     private String currentUsername;
     private String target;
-
     private SurfaceViewRenderer remoteView;
+    private Context context; // Context save karna padega init ke liye
+    private final List<IceCandidate> iceCandidateBuffer = new ArrayList<>();
 
     public Listener listener;
 
     private MainRepository() {}
 
-    // 🔹 LOGIN
+    // 🔹 LOGIN - Sirf data set karo, WebRTC abhi init mat karo
     public void login(String username, Context context, SuccessCallBack callBack) {
-
-        currentUsername = username;
-        firebaseClient = new FirebaseClient(username);
-
-        createWebRTCClient(context);
-
+        this.currentUsername = username;
+        this.context = context.getApplicationContext();
+        this.firebaseClient = new FirebaseClient(username);
         if (callBack != null) callBack.onSuccess();
     }
 
-    private void createWebRTCClient(Context context) {
-
-        webRTCClient = new WebRTCClient(
-                context,
-                new MyPeerConnectionObserver() {
-
-                    @Override
-                    public void onAddStream(MediaStream mediaStream) {
-                        if (remoteView != null
-                                && mediaStream != null
-                                && !mediaStream.videoTracks.isEmpty()) {
-                            mediaStream.videoTracks.get(0).addSink(remoteView);
-                        }
-                    }
-
-                    @Override
-                    public void onIceCandidate(IceCandidate iceCandidate) {
-                        if (target != null) {
-                            webRTCClient.sendIceCandidate(iceCandidate, target);
-                        }
-                    }
-
-                    @Override
-                    public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
-                        if (listener == null) return;
-
-                        if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
-                            listener.webrtcConnected();
-                        }
-
-                        if (newState == PeerConnection.PeerConnectionState.CLOSED
-                                || newState == PeerConnection.PeerConnectionState.DISCONNECTED
-                                || newState == PeerConnection.PeerConnectionState.FAILED) {
-                            listener.webrtcClosed();
-                        }
-                    }
-                },
-                currentUsername
-        );
-
-        webRTCClient.listener = this;
-    }
-
-    // 🔹 UI
+    // 🔹 UI BINDING - Jab Activity view de, tab WebRTC init karo
     public void initLocalView(SurfaceViewRenderer view) {
-        if (webRTCClient != null) {
-            webRTCClient.initLocalSurfaceView(view);
-        }
+        if (webRTCClient != null) webRTCClient.initLocalSurfaceView(view);
     }
 
     public void initRemoteView(SurfaceViewRenderer view) {
-        remoteView = view;
-        if (webRTCClient != null) {
+        this.remoteView = view;
+        // Agar WebRTC init nahi hua aur view mil gaya hai, toh ab init karo
+        if (webRTCClient == null && context != null) {
+            initWebRTC(context);
+        } else if (webRTCClient != null) {
             webRTCClient.initRemoteSurfaceView(view);
         }
     }
 
-    public void sendCallRequest(String targetUserId, Runnable onError) {
-        if (firebaseClient == null || currentUsername == null) {
-            if (onError != null) {
-                onError.run();
-            }
-            return;
-        }
+    private void initWebRTC(Context context) {
+        Log.d(TAG, "Initializing WebRTC with remoteView: " + (remoteView != null));
+        webRTCClient = new WebRTCClient(context, new MyPeerConnectionObserver(remoteView) {
+            @Override
+            public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {
+                // super call MyPeerConnectionObserver ka addSink chalayega
+                super.onAddTrack(receiver, mediaStreams);
+                Log.d(TAG, "onAddTrack: Remote track received");
 
+                if (receiver.track() instanceof VideoTrack && remoteView != null) {
+                    VideoTrack track = (VideoTrack) receiver.track();
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        track.addSink(remoteView);
+                        Log.d(TAG, "Video sink attached in MainRepository");
+                    });
+                }
+            }
+
+            @Override
+            public void onIceCandidate(IceCandidate iceCandidate) {
+                super.onIceCandidate(iceCandidate);
+                if (target != null) {
+                    webRTCClient.sendIceCandidate(iceCandidate, target);
+                } else {
+                    iceCandidateBuffer.add(iceCandidate);
+                }
+            }
+
+            @Override
+            public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
+                Log.d(TAG, "WebRTC Connection State: " + newState);
+                if (listener != null) {
+                    if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
+                        listener.webrtcConnected();
+                    } else if (newState == PeerConnection.PeerConnectionState.FAILED ||
+                            newState == PeerConnection.PeerConnectionState.CLOSED ||
+                            newState == PeerConnection.PeerConnectionState.DISCONNECTED) {
+                        listener.webrtcClosed();
+                    }
+                }
+            }
+        }, currentUsername);
+        webRTCClient.listener = this;
+    }
+
+    // 🔹 CALLING LOGIC
+    public void sendCallRequest(String targetUserId, Runnable onDone) {
         this.target = targetUserId;
-
-        DataModel dataModel = new DataModel(
-                currentUsername,
-                targetUserId,
-                null,
-                DataModelType.StartCall
-        );
-
+        DataModel dataModel = new DataModel(targetUserId, currentUsername, null, DataModelType.StartCall);
         firebaseClient.sendMessageToOtherUser(dataModel, () -> {
-            if (onError != null) {
-                onError.run();
-            }
+            if (onDone != null) onDone.run();
         });
     }
 
-    // 🔹 Start WebRTC Call
-    public void startCall(String target) {
-
-        if (webRTCClient == null || target == null || target.isEmpty()) return;
-
-        this.target = target;
-
-        webRTCClient.call(target);
-
-        FirebaseUtil.getCallLogCollectionReference(currentUsername)
-                .add(new CallLogModel(target, "", Timestamp.now(), false));
-    }
-
-    // 🔹 End Call
-    public void endCall() {
-
-        try {
-
-            if (firebaseClient != null) {
-                firebaseClient.clearListeners();
-            }
-
-            if (remoteView != null) {
-                remoteView.clearImage();
-                remoteView.release();
-                remoteView = null;
-            }
-
-            if (webRTCClient != null) {
-                webRTCClient.closeConnection();
-                webRTCClient = null;
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
+    public void startCall(String targetId) {
+        this.target = targetId;
+        if (webRTCClient != null) {
+            webRTCClient.call(targetId);
+            sendBufferedCandidates();
         }
-
-        target = null;
     }
 
-    // 🔹 Reject
-    public void rejectCall() {
-
-        if (target == null || firebaseClient == null) return;
-
-        firebaseClient.sendMessageToOtherUser(
-                new DataModel(
-                        currentUsername,
-                        target,
-                        null,
-                        DataModelType.RejectCall
-                ),
-                () -> {}
-        );
-
-        endCall();
+    public void answerCall(String targetId) {
+        this.target = targetId;
+        if (webRTCClient != null) {
+            webRTCClient.answer(targetId);
+            sendBufferedCandidates();
+        }
     }
 
-    // 🔹 Signaling bridge
+    private void sendBufferedCandidates() {
+        if (target != null && !iceCandidateBuffer.isEmpty() && webRTCClient != null) {
+            for (IceCandidate candidate : iceCandidateBuffer) {
+                webRTCClient.sendIceCandidate(candidate, target);
+            }
+            iceCandidateBuffer.clear();
+        }
+    }
+
+    public void onRemoteSessionReceived(SessionDescription sdp) {
+        if (webRTCClient != null) webRTCClient.onRemoteSessionReceived(sdp);
+    }
+
+    public void addIceCandidate(IceCandidate candidate) {
+        if (webRTCClient != null) webRTCClient.addIceCandidate(candidate);
+    }
+
     @Override
     public void onTransferDataToOtherPeer(DataModel model) {
         if (firebaseClient != null) {
@@ -198,27 +167,70 @@ public class MainRepository implements WebRTCClient.Listener {
         }
     }
 
-    // 🔹 Observe events
     public void subscribeForLatestEvent(NewEventCallBack callBack) {
         if (firebaseClient != null) {
-            firebaseClient.observeIncomingLatestEvent(callBack);
+            firebaseClient.observeIncomingLatestEvent(data -> {
+                try {
+                    switch (data.getType()) {
+                        case StartCall:
+                            this.target = data.getSender();
+                            callBack.onNewEventReceived(data);
+                            break;
+
+                        case Offer:
+                            this.target = data.getSender();
+                            if (webRTCClient != null) {
+                                webRTCClient.onRemoteSessionReceived(new SessionDescription(SessionDescription.Type.OFFER, data.getData()));
+                                webRTCClient.answer(data.getSender());
+                            }
+                            break;
+
+                        case Answer:
+                            this.target = data.getSender();
+                            if (webRTCClient != null) {
+                                webRTCClient.onRemoteSessionReceived(new SessionDescription(SessionDescription.Type.ANSWER, data.getData()));
+                            }
+                            break;
+
+                        case IceCandidate:
+                            IceCandidate candidate = gson.fromJson(data.getData(), IceCandidate.class);
+                            if (webRTCClient != null) webRTCClient.addIceCandidate(candidate);
+                            break;
+
+                        case EndCall:
+                        case RejectCall:
+                            if (listener != null) listener.webrtcClosed();
+                            callBack.onNewEventReceived(data);
+                            endCall();
+                            break;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Signaling Event Error: " + e.getMessage());
+                }
+            });
         }
     }
+
+    public void endCall() {
+        if (webRTCClient != null) webRTCClient.closeConnection();
+        target = null;
+        iceCandidateBuffer.clear();
+    }
+
+    public void rejectCall() {
+        if (target != null) {
+            DataModel model = new DataModel(target, currentUsername, null, DataModelType.RejectCall);
+            firebaseClient.sendMessageToOtherUser(model, () -> {});
+        }
+        endCall();
+    }
+
+    public void switchCamera() { if (webRTCClient != null) webRTCClient.switchCamera(); }
+    public void toggleAudio(boolean isMuted) { if (webRTCClient != null) webRTCClient.toggleAudio(isMuted); }
+    public void toggleVideo(boolean isMuted) { if (webRTCClient != null) webRTCClient.toggleVideo(isMuted); }
 
     public interface Listener {
         void webrtcConnected();
         void webrtcClosed();
     }
-    public void switchCamera() {
-        if (webRTCClient != null) webRTCClient.switchCamera();
-    }
-
-    public void toggleAudio(boolean isMuted) {
-        if (webRTCClient != null) webRTCClient.toggleAudio(isMuted);
-    }
-
-    public void toggleVideo(boolean isMuted) {
-        if (webRTCClient != null) webRTCClient.toggleVideo(isMuted);
-    }
-
 }
