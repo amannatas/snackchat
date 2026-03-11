@@ -75,19 +75,26 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
         mainRepository = MainRepository.getInstance();
         mainRepository.listener = this;
 
-        // Z-Order: Local view ko remote ke upar dikhane ke liye
+        // ✅ FIX 1: Local view (apna chehra) hamesha remote view ke upar rahega
         views.localView.setZOrderMediaOverlay(true);
+
+        // ✅ FIX 2: Local view ko initialize yahi kar do taaki call lagne se pehle hi camera chalu ho jaye
+        mainRepository.initLocalView(views.localView);
 
         mainRepository.login(FirebaseUtil.currentUserId(), this, () -> {
             runOnUiThread(this::initUI);
         });
     }
 
+    // ... baki code same rahega ...
+
     private void initUI() {
-        mainRepository.initLocalView(views.localView);
+        // Remote view initialize (SurfaceViewRenderer)
         mainRepository.initRemoteView(views.remoteView);
 
-        // Signalling observer setup
+        // Hamesha ensure karo ki jab UI init ho, placeholder dikh raha ho
+        views.remotePlaceholder.setVisibility(View.VISIBLE);
+
         mainRepository.subscribeForLatestEvent(data -> {
             runOnUiThread(() -> {
                 switch (data.getType()) {
@@ -114,6 +121,11 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
 
         setupButtons();
     }
+
+    // ✅ YE HAI ASLI FIX: Jab WebRTC connect ho jaye aur video aane lage
+
+
+// ... baki methods same rahenge ...
 
     private void startCallProcess() {
         views.incomingCallLayout.setVisibility(View.GONE);
@@ -181,7 +193,20 @@ public class CallActivity extends AppCompatActivity implements MainRepository.Li
 
     @Override
     public void webrtcConnected() {
-        runOnUiThread(() -> Toast.makeText(this, "Connected!", Toast.LENGTH_SHORT).show());
+        runOnUiThread(() -> {
+            // 1. Toast dikhao connection confirm karne ke liye
+            Toast.makeText(this, "Connected!", Toast.LENGTH_SHORT).show();
+
+            // 2. Placeholder image ko gayab karo (Jo humne abhi lagayi hai)
+            if (views.remotePlaceholder != null) {
+                views.remotePlaceholder.setVisibility(View.GONE);
+            }
+
+            // 3. Remote View (Video) ko visible karo
+            if (views.remoteView != null) {
+                views.remoteView.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     @Override

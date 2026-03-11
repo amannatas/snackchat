@@ -11,11 +11,9 @@ import org.webrtc.VideoTrack;
 
 public class MyPeerConnectionObserver implements PeerConnection.Observer {
 
-    // Final variable ensures it must be initialized in constructor
     private final SurfaceViewRenderer remoteView;
     private static final String TAG = "WebRTC_Observer";
 
-    // Constructor: Agar ye call hoga, toh remoteView initialize ho hi jayega
     public MyPeerConnectionObserver(SurfaceViewRenderer remoteView) {
         this.remoteView = remoteView;
         Log.d(TAG, "Observer initialized with remoteView: " + (remoteView != null));
@@ -41,7 +39,7 @@ public class MyPeerConnectionObserver implements PeerConnection.Observer {
 
     @Override
     public void onIceCandidate(IceCandidate iceCandidate) {
-        // Handle logic in MainRepository
+        // Handled in MainRepository
     }
 
     @Override
@@ -49,28 +47,15 @@ public class MyPeerConnectionObserver implements PeerConnection.Observer {
 
     @Override
     public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {
-        if (receiver.track() instanceof VideoTrack) {
-            VideoTrack track = (VideoTrack) receiver.track();
-            Log.d(TAG, "onAddTrack: Remote Video Track received!");
-
-            // Check for null before adding sink to avoid crashes
-            if (remoteView != null) {
-                track.setEnabled(true);
-                track.addSink(remoteView);
-                Log.d(TAG, "onAddTrack: Success - Track added to Sink");
-            } else {
-                Log.e(TAG, "onAddTrack: Error - remoteView is NULL!");
-            }
-        }
+        // 🚀 FIX: Yahan se addSink hata diya hai taaki crash na ho.
+        // Ye kaam ab safely MainRepository (Main Thread) mein ho raha hai.
+        Log.d(TAG, "onAddTrack triggered in Observer");
     }
 
     @Override
     public void onAddStream(MediaStream mediaStream) {
-        if (!mediaStream.videoTracks.isEmpty() && remoteView != null) {
-            VideoTrack track = mediaStream.videoTracks.get(0);
-            track.setEnabled(true);
-            track.addSink(remoteView);
-        }
+        // Deprecated method, usually onAddTrack is used in Unified Plan
+        Log.d(TAG, "onAddStream triggered");
     }
 
     @Override

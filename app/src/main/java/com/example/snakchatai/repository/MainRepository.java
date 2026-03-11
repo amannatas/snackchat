@@ -5,12 +5,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import com.example.snakchatai.model.CallLogModel;
 import com.example.snakchatai.remote.FirebaseClient;
 import com.example.snakchatai.utils.*;
 import com.example.snakchatai.webrtc.MyPeerConnectionObserver;
 import com.example.snakchatai.webrtc.WebRTCClient;
-import com.google.firebase.Timestamp;
 import com.google.gson.Gson;
 
 import org.webrtc.IceCandidate;
@@ -43,14 +41,14 @@ public class MainRepository implements WebRTCClient.Listener {
     private String currentUsername;
     private String target;
     private SurfaceViewRenderer remoteView;
-    private Context context; // Context save karna padega init ke liye
+    private SurfaceViewRenderer localView; // ✅ Added to persist local view
+    private Context context;
     private final List<IceCandidate> iceCandidateBuffer = new ArrayList<>();
 
     public Listener listener;
 
     private MainRepository() {}
 
-    // 🔹 LOGIN - Sirf data set karo, WebRTC abhi init mat karo
     public void login(String username, Context context, SuccessCallBack callBack) {
         this.currentUsername = username;
         this.context = context.getApplicationContext();
@@ -58,14 +56,16 @@ public class MainRepository implements WebRTCClient.Listener {
         if (callBack != null) callBack.onSuccess();
     }
 
-    // 🔹 UI BINDING - Jab Activity view de, tab WebRTC init karo
+    // ✅ Modified: Persists the view and inits if client exists
     public void initLocalView(SurfaceViewRenderer view) {
-        if (webRTCClient != null) webRTCClient.initLocalSurfaceView(view);
+        this.localView = view;
+        if (webRTCClient != null) {
+            webRTCClient.initLocalSurfaceView(view);
+        }
     }
 
     public void initRemoteView(SurfaceViewRenderer view) {
         this.remoteView = view;
-        // Agar WebRTC init nahi hua aur view mil gaya hai, toh ab init karo
         if (webRTCClient == null && context != null) {
             initWebRTC(context);
         } else if (webRTCClient != null) {
@@ -74,20 +74,13 @@ public class MainRepository implements WebRTCClient.Listener {
     }
 
     private void initWebRTC(Context context) {
-        Log.d(TAG, "Initializing WebRTC with remoteView: " + (remoteView != null));
         webRTCClient = new WebRTCClient(context, new MyPeerConnectionObserver(remoteView) {
             @Override
             public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {
-                // super call MyPeerConnectionObserver ka addSink chalayega
                 super.onAddTrack(receiver, mediaStreams);
-                Log.d(TAG, "onAddTrack: Remote track received");
-
                 if (receiver.track() instanceof VideoTrack && remoteView != null) {
                     VideoTrack track = (VideoTrack) receiver.track();
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        track.addSink(remoteView);
-                        Log.d(TAG, "Video sink attached in MainRepository");
-                    });
+                    new Handler(Looper.getMainLooper()).post(() -> track.addSink(remoteView));
                 }
             }
 
@@ -103,7 +96,6 @@ public class MainRepository implements WebRTCClient.Listener {
 
             @Override
             public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
-                Log.d(TAG, "WebRTC Connection State: " + newState);
                 if (listener != null) {
                     if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
                         listener.webrtcConnected();
@@ -115,16 +107,21 @@ public class MainRepository implements WebRTCClient.Listener {
                 }
             }
         }, currentUsername);
+
         webRTCClient.listener = this;
+
+        // ✅ IMPORTANT: If localView was set before WebRTC was ready, init it now
+        if (localView != null) {
+            webRTCClient.initLocalSurfaceView(localView);
+        }
     }
 
-    // 🔹 CALLING LOGIC
     public void sendCallRequest(String targetUserId, Runnable onDone) {
         this.target = targetUserId;
         DataModel dataModel = new DataModel(targetUserId, currentUsername, null, DataModelType.StartCall);
         firebaseClient.sendMessageToOtherUser(dataModel, () -> {
             if (onDone != null) onDone.run();
-        });
+        }, () -> Log.e(TAG, "Failed to send call request"));
     }
 
     public void startCall(String targetId) {
@@ -163,7 +160,7 @@ public class MainRepository implements WebRTCClient.Listener {
     @Override
     public void onTransferDataToOtherPeer(DataModel model) {
         if (firebaseClient != null) {
-            firebaseClient.sendMessageToOtherUser(model, () -> {});
+            firebaseClient.sendMessageToOtherUser(model, () -> {}, () -> Log.e(TAG, "Transfer Error"));
         }
     }
 
@@ -176,27 +173,25 @@ public class MainRepository implements WebRTCClient.Listener {
                             this.target = data.getSender();
                             callBack.onNewEventReceived(data);
                             break;
-
                         case Offer:
                             this.target = data.getSender();
                             if (webRTCClient != null) {
                                 webRTCClient.onRemoteSessionReceived(new SessionDescription(SessionDescription.Type.OFFER, data.getData()));
-                                webRTCClient.answer(data.getSender());
+                                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                    webRTCClient.answer(data.getSender());
+                                }, 500);
                             }
                             break;
-
                         case Answer:
                             this.target = data.getSender();
                             if (webRTCClient != null) {
                                 webRTCClient.onRemoteSessionReceived(new SessionDescription(SessionDescription.Type.ANSWER, data.getData()));
                             }
                             break;
-
                         case IceCandidate:
                             IceCandidate candidate = gson.fromJson(data.getData(), IceCandidate.class);
                             if (webRTCClient != null) webRTCClient.addIceCandidate(candidate);
                             break;
-
                         case EndCall:
                         case RejectCall:
                             if (listener != null) listener.webrtcClosed();
@@ -205,7 +200,7 @@ public class MainRepository implements WebRTCClient.Listener {
                             break;
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Signaling Event Error: " + e.getMessage());
+                    Log.e(TAG, "Signaling Error: " + e.getMessage());
                 }
             });
         }
@@ -215,12 +210,13 @@ public class MainRepository implements WebRTCClient.Listener {
         if (webRTCClient != null) webRTCClient.closeConnection();
         target = null;
         iceCandidateBuffer.clear();
+        // Option: localView = null; // Agar activity destroy ho rahi ho
     }
 
     public void rejectCall() {
         if (target != null) {
             DataModel model = new DataModel(target, currentUsername, null, DataModelType.RejectCall);
-            firebaseClient.sendMessageToOtherUser(model, () -> {});
+            firebaseClient.sendMessageToOtherUser(model, () -> {}, () -> Log.e(TAG, "Reject Error"));
         }
         endCall();
     }
